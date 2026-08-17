@@ -698,7 +698,7 @@ impl Waku {
                     .unwrap_or_else(|| (tr!("project.no_project_name"), String::new()));
                 let (workspace_path, branch) = match &session.workspace {
                     SessionWorkspace::Local => (String::new(), None),
-                    SessionWorkspace::NewWorktree { base_branch } => {
+                    SessionWorkspace::NewWorktree { base_branch, .. } => {
                         (String::new(), base_branch.as_deref())
                     }
                     SessionWorkspace::Worktree { path, branch } => {

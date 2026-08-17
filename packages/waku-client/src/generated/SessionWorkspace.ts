@@ -7,4 +7,10 @@
  * creates the Git worktree and replaces it with [`Self::Worktree`] before any
  * checkpoint or provider process can observe the task.
  */
-export type SessionWorkspace = { "kind": "local" } | { "kind": "newWorktree", baseBranch?: string | null, } | { "kind": "worktree", path: string, branch: string, };
+export type SessionWorkspace = { "kind": "local" } | { "kind": "newWorktree", baseBranch?: string | null,
+/**
+ * User-chosen branch name for the worktree, without the `xigon/`
+ * prefix. Empty or absent means derive the name from the first
+ * prompt.
+ */
+name?: string | null, } | { "kind": "worktree", path: string, branch: string, };

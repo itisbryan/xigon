@@ -521,6 +521,7 @@ export async function materializeWorktree(
         session_id: session.id,
         prompt,
         base_branch: session.workspace.baseBranch ?? null,
+        name: session.workspace.name ?? null,
       },
     }),
     'workspace',

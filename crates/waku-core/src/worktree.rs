@@ -23,6 +23,7 @@ pub fn create(
     session_id: Uuid,
     prompt: &str,
     base_branch: Option<&str>,
+    name: Option<&str>,
 ) -> anyhow::Result<CreatedWorktree> {
     let root = dirs::home_dir()
         .ok_or_else(|| anyhow!("could not locate the home directory for ~/.waku/worktrees"))?
@@ -34,6 +35,7 @@ pub fn create(
         session_id,
         prompt,
         base_branch,
+        name,
     )
 }
 
@@ -44,6 +46,7 @@ fn create_in(
     session_id: Uuid,
     prompt: &str,
     requested_base: Option<&str>,
+    requested_name: Option<&str>,
 ) -> anyhow::Result<CreatedWorktree> {
     let project_path = fs::canonicalize(project_path)
         .with_context(|| format!("could not open project {}", project_path.display()))?;
@@ -74,7 +77,10 @@ fn create_in(
         )
     })?;
 
-    let slug = worktree_slug(prompt);
+    let slug = match requested_name.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(name) => worktree_slug(name),
+        None => worktree_slug(prompt),
+    };
     for index in 0..MAX_CANDIDATES {
         let name = candidate_name(&slug, index);
         let branch = format!("xigon/{name}");
@@ -310,6 +316,7 @@ mod tests {
             Uuid::new_v4(),
             "Build a project selector",
             None,
+            None,
         )
         .unwrap();
         assert_eq!(first.branch, "xigon/build-a-project-selector");
@@ -330,6 +337,7 @@ mod tests {
             Uuid::new_v4(),
             "Build a project selector",
             None,
+            None,
         )
         .unwrap();
         assert_eq!(second.branch, "xigon/build-a-project-selector-2");
@@ -341,12 +349,25 @@ mod tests {
             Uuid::new_v4(),
             "Use selected base",
             Some("feature"),
+            None,
         )
         .unwrap();
         assert_eq!(
             fs::read_to_string(from_feature.path.join("README.md")).unwrap(),
             "feature\n"
         );
+
+        let named = create_in(
+            &project,
+            &worktree_root,
+            project_id,
+            Uuid::new_v4(),
+            "ignored prompt",
+            None,
+            Some("My Custom Name!"),
+        )
+        .unwrap();
+        assert_eq!(named.branch, "xigon/my-custom-name");
 
         fs::remove_dir_all(&root).ok();
     }

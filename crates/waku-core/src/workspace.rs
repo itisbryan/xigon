@@ -102,6 +102,7 @@ pub fn execute(operation: WorkspaceOperation) -> anyhow::Result<WorkspaceResult>
             session_id,
             prompt,
             base_branch,
+            name,
         } => WorkspaceResult::WorktreeCreated {
             worktree: crate::worktree::create(
                 &project_path,
@@ -109,6 +110,7 @@ pub fn execute(operation: WorkspaceOperation) -> anyhow::Result<WorkspaceResult>
                 session_id,
                 &prompt,
                 base_branch.as_deref(),
+                name.as_deref(),
             )?,
         },
         WorkspaceOperation::InspectCommit { cwd } => WorkspaceResult::CommitSnapshot {

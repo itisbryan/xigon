@@ -548,6 +548,11 @@ pub enum SessionWorkspace {
     NewWorktree {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base_branch: Option<String>,
+        /// User-chosen branch name for the worktree, without the `xigon/`
+        /// prefix. Empty or absent means derive the name from the first
+        /// prompt.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
     /// A materialized worktree. `path` preserves a project that points at a
     /// subdirectory of its repository rather than the repository root itself.
@@ -3510,10 +3515,17 @@ mod tests {
     fn planned_worktree_base_branch_is_optional_and_round_trips() {
         let legacy: SessionWorkspace =
             serde_json::from_value(serde_json::json!({ "kind": "newWorktree" })).unwrap();
-        assert_eq!(legacy, SessionWorkspace::NewWorktree { base_branch: None });
+        assert_eq!(
+            legacy,
+            SessionWorkspace::NewWorktree {
+                base_branch: None,
+                name: None
+            }
+        );
 
         let selected = SessionWorkspace::NewWorktree {
             base_branch: Some("release/next".into()),
+            name: Some("my-feature".into()),
         };
         let restored = serde_json::from_value(serde_json::to_value(&selected).unwrap()).unwrap();
         assert_eq!(selected, restored);

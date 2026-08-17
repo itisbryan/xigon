@@ -2738,7 +2738,7 @@ impl Waku {
         let snapshot = self.branch_snapshot_for_workspace(&workspace_path, cx)?;
         let selected_branch = match &workspace {
             SessionWorkspace::Local => snapshot.display_branch().map(str::to_owned),
-            SessionWorkspace::NewWorktree { base_branch } => base_branch
+            SessionWorkspace::NewWorktree { base_branch, .. } => base_branch
                 .clone()
                 .or_else(|| snapshot.default_branch.clone())
                 .or_else(|| snapshot.display_branch().map(str::to_owned)),
@@ -3265,7 +3265,10 @@ impl Waku {
                         MenuItem::new(tr!("workspace.new_worktree"), move |_, cx| {
                             let _ = worktree.update(cx, |this, cx| {
                                 this.select_workspace(
-                                    SessionWorkspace::NewWorktree { base_branch: None },
+                                    SessionWorkspace::NewWorktree {
+                                        base_branch: None,
+                                        name: None,
+                                    },
                                     cx,
                                 );
                             });
@@ -3279,6 +3282,30 @@ impl Waku {
         } else {
             worktree_trigger.into_any_element()
         };
+
+        let worktree_name_field = (can_configure_workspace
+            && matches!(workspace, SessionWorkspace::NewWorktree { .. }))
+        .then(|| {
+            div()
+                .id("worktree-name-field")
+                .h(px(22.0))
+                .px(px(6.0))
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(theme.border)
+                .bg(theme.inset)
+                .flex()
+                .items_center()
+                .text_size(px(11.0))
+                .child(div().text_color(theme.text_ghost).child("xigon/"))
+                .child(
+                    div()
+                        .min_w(px(56.0))
+                        .max_w(px(140.0))
+                        .child(self.worktree_name_input.clone()),
+                )
+                .into_any_element()
+        });
 
         let branch_selector = self.render_branch_selector(cx);
 
@@ -3308,6 +3335,7 @@ impl Waku {
                     .line_height(px(14.0))
                     .child(project_selector)
                     .child(worktree_selector)
+                    .children(worktree_name_field)
                     .children(branch_selector)
                     .child(div().flex_1())
                     .children(usage_meter),

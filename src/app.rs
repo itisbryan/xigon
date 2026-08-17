@@ -1252,6 +1252,7 @@ pub struct Waku {
     /// One stable field reused across sidebar rows so virtualization never
     /// replaces the focused editor while a rename is in progress.
     session_rename_input: Entity<ComposerInput>,
+    worktree_name_input: Entity<ComposerInput>,
     /// Date groups the user has folded in the sidebar. This is intentionally
     /// runtime-only, like transcript disclosure state.
     sidebar_collapsed_groups: HashSet<SessionDateGroup>,
@@ -1871,6 +1872,11 @@ impl Waku {
                 .placeholder(tr!("skills.search"))
         });
         let session_rename_input = cx.new(|cx| ComposerInput::new(window, cx).search_field());
+        let worktree_name_input = cx.new(|cx| {
+            ComposerInput::new(window, cx)
+                .search_field()
+                .placeholder(tr!("workspace.name_placeholder"))
+        });
         let provider_path_input = cx.new(|cx| {
             ComposerInput::new(window, cx)
                 .search_field()
@@ -2397,6 +2403,15 @@ impl Waku {
             )
             .detach();
             cx.subscribe(
+                &worktree_name_input,
+                |this: &mut Self, _, event: &ComposerEvent, cx| {
+                    if matches!(event, ComposerEvent::Edited) {
+                        this.set_worktree_name_from_input(cx);
+                    }
+                },
+            )
+            .detach();
+            cx.subscribe(
                 &usage_project_filter,
                 |_: &mut Self, _, event: &ComposerEvent, cx| {
                     if matches!(event, ComposerEvent::Edited) {
@@ -2663,6 +2678,7 @@ impl Waku {
                 session_navigation,
                 session_rename: None,
                 session_rename_input,
+                worktree_name_input,
                 sidebar_collapsed_groups: HashSet::new(),
                 sidebar_visible,
                 sidebar_width,

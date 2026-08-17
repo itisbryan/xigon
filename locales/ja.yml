@@ -575,6 +575,7 @@ branches.checked_out_elsewhere: 別のワークツリーでチェックアウト
 workspace.work_in: 作業場所
 workspace.local: ローカル
 workspace.new_worktree: 新しいワークツリー
+workspace.name_placeholder: プロンプトから命名
 workspace.workspace: ワークスペース
 workspace.worktree: ワークツリー
 

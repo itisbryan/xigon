@@ -149,7 +149,7 @@ fn prepare_submission(
     turn_count: usize,
 ) -> anyhow::Result<PreparedSubmission> {
     let workspace = match workspace {
-        SessionWorkspace::NewWorktree { base_branch } => {
+        SessionWorkspace::NewWorktree { base_branch, name } => {
             if project.is_projectless() {
                 anyhow::bail!("a projectless task cannot create a Git worktree");
             }
@@ -160,6 +160,7 @@ fn prepare_submission(
                     session_id,
                     prompt: prompt.to_owned(),
                     base_branch,
+                    name,
                 })? {
                     waku_client::WorkspaceResult::WorktreeCreated { worktree } => worktree,
                     _ => anyhow::bail!("the daemon returned an invalid worktree response"),

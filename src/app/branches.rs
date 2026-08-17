@@ -147,7 +147,8 @@ impl Waku {
         }
         if matches!(session.workspace, SessionWorkspace::NewWorktree { .. }) {
             let changed = self.selected_session_mut().is_some_and(|session| {
-                let SessionWorkspace::NewWorktree { base_branch } = &mut session.workspace else {
+                let SessionWorkspace::NewWorktree { base_branch, .. } = &mut session.workspace
+                else {
                     return false;
                 };
                 if base_branch.as_deref() == Some(branch.as_str()) {

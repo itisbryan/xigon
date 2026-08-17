@@ -85,6 +85,7 @@ impl Waku {
             }
         }
         self.activate_session(session_id, cx);
+        self.refresh_worktree_name_input(cx);
     }
 
     /// Loads a session's transcript if startup only fetched its list columns.
@@ -266,6 +267,43 @@ impl Waku {
         }
         session.workspace = workspace;
         self.save();
+        self.refresh_worktree_name_input(cx);
+        cx.notify();
+    }
+
+    /// Mirror the draft's stored worktree name into the editable chip. Called
+    /// when the workspace mode or the active session changes so the field
+    /// never shows a name that belongs to a different draft.
+    pub(super) fn refresh_worktree_name_input(&mut self, cx: &mut Context<Self>) {
+        let name = match self.selected_session().map(|session| &session.workspace) {
+            Some(SessionWorkspace::NewWorktree { name, .. }) => name.clone().unwrap_or_default(),
+            _ => String::new(),
+        };
+        self.worktree_name_input.update(cx, |input, cx| {
+            if input.content() != name {
+                input.set_content(name, cx);
+            }
+        });
+    }
+
+    /// Persist the name typed in the chip onto the selected draft's workspace,
+    /// so it flows through `session.workspace` at submit time.
+    pub(super) fn set_worktree_name_from_input(&mut self, cx: &mut Context<Self>) {
+        let name = self.worktree_name_input.read(cx).content().trim().to_owned();
+        let next = (!name.is_empty()).then_some(name);
+        let mut changed = false;
+        if let Some(session) = self.selected_session_mut()
+            && !session.has_started()
+            && !session.is_busy()
+            && let SessionWorkspace::NewWorktree { name: slot, .. } = &mut session.workspace
+            && *slot != next
+        {
+            *slot = next;
+            changed = true;
+        }
+        if changed {
+            self.save();
+        }
         cx.notify();
     }
 

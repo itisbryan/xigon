@@ -1116,6 +1116,8 @@ workspace.local:
   en: Local
 workspace.new_worktree:
   en: New worktree
+workspace.name_placeholder:
+  en: name from prompt
 workspace.workspace:
   en: workspace
 workspace.worktree:

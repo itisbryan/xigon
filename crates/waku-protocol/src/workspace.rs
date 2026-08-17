@@ -104,6 +104,7 @@ pub enum WorkspaceOperation {
         session_id: Uuid,
         prompt: String,
         base_branch: Option<String>,
+        name: Option<String>,
     },
     InspectCommit {
         #[ts(type = "string")]
