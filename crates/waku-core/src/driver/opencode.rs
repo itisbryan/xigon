@@ -877,12 +877,21 @@ fn handle_event(
             }
         }
         "session.error" => {
-            let message = properties
-                .pointer("/error/message")
+            // OpenCode puts the payload on /error/{name,data}; APIError et al.
+            // carry the readable detail at /error/data/message.
+            let name = properties.pointer("/error/name").and_then(Value::as_str);
+            let detail = properties
+                .pointer("/error/data/message")
+                .or_else(|| properties.pointer("/error/message"))
                 .or_else(|| properties.get("message"))
-                .and_then(Value::as_str)
-                .unwrap_or("OpenCode reported an error");
-            let _ = events.send(DriverEvent::Error(message.to_owned()));
+                .and_then(Value::as_str);
+            let message = match (name, detail) {
+                (Some(name), Some(detail)) => format!("{name}: {detail}"),
+                (Some(name), None) => name.to_owned(),
+                (None, Some(detail)) => detail.to_owned(),
+                (None, None) => "OpenCode reported an error".to_owned(),
+            };
+            let _ = events.send(DriverEvent::Error(message));
         }
         "session.updated" => {
             let title = properties
@@ -1237,6 +1246,59 @@ mod tests {
         assert_eq!(questions[0].id, "question-0-files");
         assert!(questions[0].multi_select);
         assert_eq!(questions[0].options[0].label, "Source");
+    }
+
+    #[test]
+    fn session_error_surfaces_the_provider_payload_message() {
+        let (events, event_rx, commands, _command_rx, turn_active, mut state) = harness();
+        handle_event(
+            &json!({
+                "type": "session.error",
+                "properties": {
+                    "sessionID": "session-1",
+                    "error": {
+                        "name": "APIError",
+                        "data": {
+                            "message": "Invalid API key",
+                            "statusCode": 401,
+                            "isRetryable": false
+                        }
+                    }
+                }
+            }),
+            &events,
+            &commands,
+            &turn_active,
+            false,
+            &mut state,
+        );
+        let DriverEvent::Error(message) = event_rx.try_recv().unwrap() else {
+            panic!("session.error must surface a driver error");
+        };
+        assert_eq!(message, "APIError: Invalid API key");
+    }
+
+    #[test]
+    fn session_error_falls_back_to_the_error_name() {
+        let (events, event_rx, commands, _command_rx, turn_active, mut state) = harness();
+        handle_event(
+            &json!({
+                "type": "session.error",
+                "properties": {
+                    "sessionID": "session-1",
+                    "error": { "name": "MessageOutputLengthError", "data": {} }
+                }
+            }),
+            &events,
+            &commands,
+            &turn_active,
+            false,
+            &mut state,
+        );
+        let DriverEvent::Error(message) = event_rx.try_recv().unwrap() else {
+            panic!("session.error must surface a driver error");
+        };
+        assert_eq!(message, "MessageOutputLengthError");
     }
 
     /// Drives a real `opencode serve` through the actual driver. Ignored by
