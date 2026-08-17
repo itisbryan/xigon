@@ -1121,6 +1121,10 @@ impl Waku {
             .find(|project| project.id == session.project_id)
             .map(Project::display_name)
             .unwrap_or_else(|| tr!("sidebar.unknown_project"));
+        let subtitle = match session.workspace.branch() {
+            Some(branch) => SharedString::from(format!("{project_name} · {branch}")),
+            None => SharedString::from(project_name),
+        };
         let rename_input =
             (self.session_rename == Some(session_id)).then(|| self.session_rename_input.clone());
         let renaming = rename_input.is_some();
@@ -1231,7 +1235,7 @@ impl Waku {
                             .min_w_0()
                             .truncate()
                             .text_color(theme.text_tertiary)
-                            .child(SharedString::from(project_name)),
+                            .child(subtitle),
                     )
                     .when_some(
                         session_time_label(session, unix_time()),

@@ -574,6 +574,16 @@ impl SessionWorkspace {
             Self::Local | Self::NewWorktree { .. } => None,
         }
     }
+
+    /// Branch of a materialized worktree. `None` for local checkouts (their
+    /// branch is the repository's live `HEAD`, which the client must resolve
+    /// off the render path) and for drafts not yet submitted.
+    pub fn branch(&self) -> Option<&str> {
+        match self {
+            Self::Worktree { branch, .. } => Some(branch),
+            Self::Local | Self::NewWorktree { .. } => None,
+        }
+    }
 }
 
 impl Project {
