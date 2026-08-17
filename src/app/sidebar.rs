@@ -209,7 +209,12 @@ pub(super) fn format_time_ago(seconds: u64) -> String {
 pub(super) enum SidebarRow {
     /// Opens the window-wide command palette and scrolls with history.
     Search,
-    /// Date-group header; the first row also carries the project action.
+    /// Header of the projects section.
+    ProjectsHeader,
+    /// An added project, listed even before it has any started session.
+    Project(Uuid),
+    /// Date-group header; the first row also carries the project action when
+    /// no projects section is present.
     Header(SessionDateGroup),
     /// A started session.
     Session(Uuid),
@@ -757,6 +762,12 @@ impl Waku {
             fingerprint = mix_uuid(fingerprint, session.id);
             fingerprint = mix(fingerprint, sidebar_session_timestamp(session));
         }
+        for project in &self.state.projects {
+            if project.is_projectless() {
+                continue;
+            }
+            fingerprint = mix_uuid(fingerprint, project.id);
+        }
         // A set has no stable iteration order; combine order-independently.
         let collapsed = self
             .sidebar_collapsed_groups
@@ -793,6 +804,18 @@ impl Waku {
         }
 
         let mut rows = vec![SidebarRow::Search];
+        let project_ids = self
+            .state
+            .projects
+            .iter()
+            .filter(|project| !project.is_projectless())
+            .map(|project| project.id)
+            .collect::<Vec<_>>();
+        if !project_ids.is_empty() {
+            rows.push(SidebarRow::ProjectsHeader);
+            rows.extend(project_ids.into_iter().map(SidebarRow::Project));
+            rows.push(SidebarRow::GroupSpacer);
+        }
         for group in SessionDateGroup::ALL {
             let group_sessions = &grouped_sessions[group.index()];
             append_sidebar_group_rows(
@@ -845,6 +868,10 @@ impl Waku {
         };
         match *row {
             SidebarRow::Search => self.render_sidebar_search(cx).into_any_element(),
+            SidebarRow::ProjectsHeader => self.render_projects_header(cx).into_any_element(),
+            SidebarRow::Project(project_id) => self
+                .render_sidebar_project_row(project_id, cx)
+                .into_any_element(),
             SidebarRow::Header(group) => self
                 .render_sidebar_group_header(group, index == 1, cx)
                 .into_any_element(),
@@ -853,6 +880,71 @@ impl Waku {
                 .into_any_element(),
             SidebarRow::GroupSpacer => div().w_full().h(px(10.0)).into_any_element(),
         }
+    }
+
+    /// Header of the projects section; carries the add-project action so it
+    /// stays visible even when no date-group header is the first row.
+    fn render_projects_header(&self, cx: &mut Context<Self>) -> Div {
+        let theme = Theme::current(cx);
+        session_group_header(&theme)
+            .w_full()
+            .justify_between()
+            .child(tr!("sidebar.projects"))
+            .child(self.render_sidebar_project_action(cx))
+    }
+
+    fn render_sidebar_project_row(
+        &self,
+        project_id: Uuid,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = Theme::current(cx);
+        let Some(project) = self
+            .state
+            .projects
+            .iter()
+            .find(|project| project.id == project_id)
+        else {
+            return div().into_any_element();
+        };
+        let selected = self.state.selected_project == Some(project_id);
+        div()
+            .id(SharedString::from(format!("sidebar-project-{project_id}")))
+            .tab_index(0)
+            .w_full()
+            .h(px(28.0))
+            .px(px(8.0))
+            .rounded(px(6.0))
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .cursor_default()
+            .when(selected, |element| {
+                element.bg(theme.sidebar_item_background)
+            })
+            .hover(|element| element.bg(theme.sidebar_item_background))
+            .focus_visible(|element| element.border_1().border_color(theme.accent))
+            .child(icon("icons/folder.svg", 14.0, theme.text_ghost))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .line_clamp(1)
+                    .text_overflow(gpui::TextOverflow::Truncate("...".into()))
+                    .text_size(px(13.5))
+                    .text_color(theme.text)
+                    .child(SharedString::from(project.display_name())),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.select_project(project_id, cx);
+            }))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                    this.select_project(project_id, cx);
+                    cx.stop_propagation();
+                }
+            }))
+            .into_any_element()
     }
 
     fn render_sidebar_group_header(

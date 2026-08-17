@@ -231,6 +231,7 @@ sidebar.close: サイドバーを閉じる
 sidebar.hide: サイドバーを隠す
 sidebar.open: サイドバーを開く
 sidebar.tasks: タスク
+sidebar.projects: プロジェクト
 sidebar.add_project: リモートプロジェクトを追加
 sidebar.resize: サイドバーの幅を変更
 sidebar.status_working: 作業中

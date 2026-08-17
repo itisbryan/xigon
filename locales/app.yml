@@ -450,6 +450,8 @@ sidebar.open:
   en: Open sidebar
 sidebar.tasks:
   en: Tasks
+sidebar.projects:
+  en: Projects
 sidebar.add_project:
   en: Add remote project
 sidebar.resize:

@@ -219,6 +219,7 @@ sidebar.close: 关闭侧边栏
 sidebar.hide: 隐藏侧边栏
 sidebar.open: 打开侧边栏
 sidebar.tasks: 任务
+sidebar.projects: 项目
 sidebar.add_project: 添加远程项目
 sidebar.resize: 调整侧边栏宽度
 sidebar.status_working: 正在工作
