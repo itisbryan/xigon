@@ -6,10 +6,10 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const isMacOS = process.platform === "darwin";
-const appName = "Waku Debug";
+const appName = "Xigon Debug";
 const targetDir = resolve(root, process.env.CARGO_TARGET_DIR || "target");
 const appPath = isMacOS
-  ? join(targetDir, "debug/Waku Debug.app")
+  ? join(targetDir, "debug/Xigon Debug.app")
   : join(targetDir, "debug/waku");
 const daemonPath = join(
   targetDir,

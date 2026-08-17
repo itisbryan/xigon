@@ -8,7 +8,7 @@ import { createInterface } from "node:readline/promises";
 const projectRoot = resolve(import.meta.dir, "..");
 const userHome = homedir();
 const library = join(userHome, "Library");
-const debugBundleIdentifiers = ["sh.waku.dev", "codes.waku.dev"];
+const debugBundleIdentifiers = ["com.github.itisbryan.xigon.dev"];
 
 type Target = {
   path: string;
@@ -22,7 +22,7 @@ function addCandidate(path: string): void {
 }
 
 function isDebugDiagnostic(name: string): boolean {
-  return /^Waku Debug(?: Computer Use)?[-_.]/.test(name);
+  return /^Xigon Debug(?: Computer Use)?[-_.]/.test(name);
 }
 
 async function addMatchingChildren(
@@ -65,37 +65,36 @@ async function existingTargets(): Promise<Target[]> {
 // Checkout-local state and build artifacts. Keep the release cache intact.
 addCandidate(join(projectRoot, "temp"));
 addCandidate(join(projectRoot, ".waku-cache", "computer-use", "debug"));
-addCandidate(join(projectRoot, "target", "debug", "Waku Debug.app"));
+addCandidate(join(projectRoot, "target", "debug", "Xigon Debug.app"));
 
 if (process.env.CARGO_TARGET_DIR) {
   addCandidate(
     join(
       resolve(projectRoot, process.env.CARGO_TARGET_DIR),
       "debug",
-      "Waku Debug.app",
+      "Xigon Debug.app",
     ),
   );
 }
 
 // Debug app bundles that may have been copied outside the checkout.
-addCandidate(join(userHome, "Applications", "Waku Debug.app"));
-addCandidate("/Applications/Waku Debug.app");
+addCandidate(join(userHome, "Applications", "Xigon Debug.app"));
+addCandidate("/Applications/Xigon Debug.app");
 
-// Debug-only app data. The release app uses Waku/sh.waku and is not included.
-addCandidate(join(library, "Application Support", "Waku Debug"));
+// Debug-only app data. The release app uses Xigon/com.github.itisbryan.xigon and is not included.
+addCandidate(join(library, "Application Support", "Xigon Debug"));
 addCandidate(
   join(
     library,
     "Application Support",
-    "Waku",
+    "Xigon",
     "Computer Use",
-    "Waku Debug Computer Use.app",
+    "Xigon Debug Computer Use.app",
   ),
 );
-addCandidate(join(library, "Caches", "Waku Debug"));
-addCandidate(join(library, "Logs", "Waku Debug"));
+addCandidate(join(library, "Caches", "Xigon Debug"));
+addCandidate(join(library, "Logs", "Xigon Debug"));
 
-// codes.waku.dev was Waku Debug's bundle ID before sh.waku.dev.
 for (const bundleIdentifier of debugBundleIdentifiers) {
   for (const path of [
     join(library, "Application Support", bundleIdentifier),
@@ -137,18 +136,18 @@ await addMatchingChildren(
 
 const targets = await existingTargets();
 if (targets.length === 0) {
-  console.log("No Waku Debug files or directories found.");
+  console.log("No Xigon Debug files or directories found.");
   process.exit(0);
 }
 
 console.log(
-  "The following Waku Debug paths, including directory contents, will be permanently deleted:\n",
+  "The following Xigon Debug paths, including directory contents, will be permanently deleted:\n",
 );
 for (const target of targets) {
   console.log(`  [${target.kind}] ${target.path}`);
 }
 
-const runningProcesses = ["Waku Debug", "Waku Debug Computer Use"].filter(
+const runningProcesses = ["Xigon Debug", "Xigon Debug Computer Use"].filter(
   (name) =>
     Bun.spawnSync(["/usr/bin/pgrep", "-x", name], {
       stdout: "ignore",
