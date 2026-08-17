@@ -940,7 +940,7 @@ impl HelperConnection {
                 .name("waku-js-repl-computer-use-stderr".into())
                 .spawn(move || {
                     for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                        eprintln!("Waku Computer Use: {line}");
+                        eprintln!("Xigon Computer Use: {line}");
                     }
                 })?;
         }

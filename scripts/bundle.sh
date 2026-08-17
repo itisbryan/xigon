@@ -38,15 +38,15 @@ else
 fi
 case "$profile" in
   debug)
-    app_name="Waku Debug"
-    helper_name="Waku Debug Computer Use"
-    bundle_identifier="sh.waku.dev"
+    app_name="Xigon Debug"
+    helper_name="Xigon Debug Computer Use"
+    bundle_identifier="com.github.itisbryan.xigon.dev"
     icon_file="AppIconDev.icns"
     ;;
   release)
-    app_name="Waku"
-    helper_name="Waku Computer Use"
-    bundle_identifier="sh.waku"
+    app_name="Xigon"
+    helper_name="Xigon Computer Use"
+    bundle_identifier="com.github.itisbryan.xigon"
     icon_file="AppIcon.icns"
     ;;
   *)

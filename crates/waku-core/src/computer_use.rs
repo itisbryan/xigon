@@ -212,7 +212,7 @@ pub fn helper_display_name() -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .map(|app_name| format!("{app_name} Computer Use"))
-        .unwrap_or_else(|| "Waku Computer Use".into())
+        .unwrap_or_else(|| "Xigon Computer Use".into())
 }
 
 pub fn mcp_server_command() -> anyhow::Result<PathBuf> {
@@ -349,7 +349,7 @@ pub fn skill_root_path() -> anyhow::Result<PathBuf> {
         .ok_or_else(|| anyhow!("Waku app bundle is malformed"))?;
     let path = contents.join("Resources").join("skills");
     if !path.join("waku-computer-use").join("SKILL.md").is_file() {
-        bail!("Waku Computer Use skill is missing from this Waku build")
+        bail!("Xigon Computer Use skill is missing from this Xigon build")
     }
     Ok(path)
 }
