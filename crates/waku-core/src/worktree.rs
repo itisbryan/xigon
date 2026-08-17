@@ -77,7 +77,7 @@ fn create_in(
     let slug = worktree_slug(prompt);
     for index in 0..MAX_CANDIDATES {
         let name = candidate_name(&slug, index);
-        let branch = format!("waku/{name}");
+        let branch = format!("xigon/{name}");
         let path = project_worktrees.join(&name);
         if path.exists() || local_branch_exists(&repository, &branch)? {
             continue;
@@ -111,7 +111,7 @@ fn create_in(
     // A UUID fallback makes the final attempt independent of human-readable
     // name collisions while keeping the common path and branch pleasant.
     let fallback = format!("{slug}-{}", &session_id.simple().to_string()[..8]);
-    let branch = format!("waku/{fallback}");
+    let branch = format!("xigon/{fallback}");
     let path = project_worktrees.join(&fallback);
     if path.exists() || local_branch_exists(&repository, &branch)? {
         bail!("could not allocate a unique Git worktree name");
@@ -312,7 +312,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(first.branch, "waku/build-a-project-selector");
+        assert_eq!(first.branch, "xigon/build-a-project-selector");
         assert_eq!(
             fs::read_to_string(first.path.join("README.md")).unwrap(),
             "main\n"
@@ -332,7 +332,7 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(second.branch, "waku/build-a-project-selector-2");
+        assert_eq!(second.branch, "xigon/build-a-project-selector-2");
 
         let from_feature = create_in(
             &project,

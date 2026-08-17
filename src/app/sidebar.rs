@@ -1216,7 +1216,15 @@ impl Waku {
                     .gap(px(5.0))
                     .text_size(px(11.5))
                     .line_height(px(15.0))
-                    .child(icon("icons/folder.svg", 11.0, theme.text_tertiary))
+                    .child(icon(
+                        if session.workspace.is_worktree() {
+                            "icons/fork.svg"
+                        } else {
+                            "icons/folder.svg"
+                        },
+                        11.0,
+                        theme.text_tertiary,
+                    ))
                     .child(
                         div()
                             .flex_1()
