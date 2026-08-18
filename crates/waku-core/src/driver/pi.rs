@@ -17,7 +17,9 @@ use super::{activity, computer_use as computer_use_runtime};
 use crate::driver::{
     DriverControl, DriverEventSender, DriverEventSink, DriverStartOptions, SessionOptions,
 };
-use crate::model::{ActivityKind, DriverEvent, InteractionMode, ProviderResumeCursor, RuntimeMode};
+use crate::model::{
+    ActivityKind, DriverEvent, InteractionMode, ProviderResumeCursor, RuntimeMode, TokenBreakdown,
+};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -698,6 +700,18 @@ fn pi_context_usage(state: &Value, stats: Option<&Value>) -> Option<(Option<u64>
 /// Pi's providers normally fill `totalTokens`, but Pi itself deliberately
 /// falls back to the four component counters when a provider leaves it zero.
 /// Keep Waku's meter aligned with that provider-native calculation.
+fn pi_token_breakdown(message: &Value) -> Option<TokenBreakdown> {
+    let usage = message.get("usage")?;
+    let field = |name: &str| usage.get(name).and_then(Value::as_u64).unwrap_or(0);
+    let breakdown = TokenBreakdown {
+        input: field("input"),
+        output: field("output"),
+        cache_read: field("cacheRead"),
+        cache_write: field("cacheWrite"),
+    };
+    (breakdown != TokenBreakdown::default()).then_some(breakdown)
+}
+
 fn pi_message_context_tokens(message: &Value) -> Option<u64> {
     let usage = message.get("usage")?;
     usage
@@ -903,6 +917,9 @@ fn handle_pi_message(
                         context_tokens: Some(tokens),
                         context_window: None,
                     });
+                }
+                if let Some(breakdown) = value.get("message").and_then(pi_token_breakdown) {
+                    let _ = events.send(DriverEvent::TokenBreakdownUpdated(breakdown));
                 }
                 emit_completed_message_fallback(value.get("message"), events, state);
             }
@@ -1435,6 +1452,15 @@ mod tests {
                 context_tokens: Some(5952),
                 context_window: None
             }
+        ));
+        assert!(matches!(
+            event_rx.try_recv().unwrap(),
+            DriverEvent::TokenBreakdownUpdated(TokenBreakdown {
+                input: 33,
+                output: 27,
+                cache_read: 5888,
+                cache_write: 4,
+            })
         ));
         assert!(event_rx.try_recv().is_err());
     }

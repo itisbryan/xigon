@@ -24,7 +24,8 @@ use crate::driver::{
 use crate::model::{
     ActivityKind, BackgroundWorkEvent, BackgroundWorkItem, BackgroundWorkKind,
     BackgroundWorkStatus, DriverEvent, InteractionMode, PermissionOption, ProviderResumeCursor,
-    ReportedCommand, RuntimeMode, UserInputAnswer, UserInputOption, UserInputQuestion,
+    ReportedCommand, RuntimeMode, TokenBreakdown, UserInputAnswer, UserInputOption,
+    UserInputQuestion,
 };
 
 enum CommandMessage {
@@ -1174,6 +1175,16 @@ fn emit_usage(usage: Option<&Value>, events: &impl DriverEventSink) {
             context_window: None,
         });
     }
+    let field = |name: &str| usage.get(name).and_then(Value::as_u64).unwrap_or(0);
+    let breakdown = TokenBreakdown {
+        input: field("inputTokens"),
+        output: field("outputTokens"),
+        cache_read: field("cacheReadTokens"),
+        cache_write: field("cacheWriteTokens"),
+    };
+    if breakdown != TokenBreakdown::default() {
+        let _ = events.send(DriverEvent::TokenBreakdownUpdated(breakdown));
+    }
 }
 
 fn turn_end_summary(data: &Value, reason: Option<&str>) -> Option<String> {
@@ -1591,6 +1602,39 @@ mod tests {
         };
         assert_eq!(completed.source_id.as_deref(), Some("call-1"));
         assert!(completed.complete);
+    }
+
+    #[test]
+    fn usage_chunk_emits_token_breakdown() {
+        let (events, event_rx, _) = harness();
+        emit_usage(
+            Some(&json!({
+                "inputTokens": 100,
+                "outputTokens": 40,
+                "cacheReadTokens": 900,
+                "cacheWriteTokens": 10
+            })),
+            &events,
+        );
+        assert!(matches!(
+            event_rx.recv().unwrap(),
+            DriverEvent::UsageUpdated {
+                context_tokens: Some(1050),
+                ..
+            }
+        ));
+        let DriverEvent::TokenBreakdownUpdated(breakdown) = event_rx.recv().unwrap() else {
+            panic!("usage chunk must emit a token breakdown");
+        };
+        assert_eq!(
+            (
+                breakdown.input,
+                breakdown.output,
+                breakdown.cache_read,
+                breakdown.cache_write
+            ),
+            (100, 40, 900, 10)
+        );
     }
 
     #[test]
