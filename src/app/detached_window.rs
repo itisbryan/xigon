@@ -19,6 +19,15 @@ impl DetachedSessionView {
     fn new(waku: &Entity<Waku>, session_id: Uuid, cx: &mut Context<Self>) -> Self {
         // Re-render whenever shared app state changes, so streaming stays live.
         cx.observe(waku, |_, _, cx| cx.notify()).detach();
+        // Closing this window returns the session to the main strip (no delete,
+        // no selection steal), completing the tear-off round-trip.
+        cx.on_release(|this, cx| {
+            let session_id = this.session_id;
+            if let Some(waku) = this.waku.upgrade() {
+                waku.update(cx, |waku, cx| waku.readd_chat_tab(session_id, cx));
+            }
+        })
+        .detach();
         Self {
             waku: waku.downgrade(),
             session_id,
@@ -230,6 +239,18 @@ impl Waku {
         );
         if opened.is_ok() {
             self.close_chat_tab(session_id, cx);
+        }
+    }
+
+    /// Return a session to the chat strip if it still exists and is not already
+    /// a tab. Does not change the selection, so reclaiming a detached window is
+    /// non-disruptive.
+    pub(super) fn readd_chat_tab(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
+        if self.state.sessions.iter().any(|session| session.id == session_id)
+            && !self.chat_tabs.contains(&session_id)
+        {
+            self.chat_tabs.push(session_id);
+            cx.notify();
         }
     }
 }
