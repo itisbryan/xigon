@@ -2250,6 +2250,7 @@ impl Waku {
                     }
                     ComposerEvent::Edited => {
                         this.schedule_composer_draft_save(cx);
+                        this.refresh_command_badge(cx);
                         cx.notify();
                     }
                     ComposerEvent::Focus => {}

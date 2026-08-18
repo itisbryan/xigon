@@ -541,6 +541,9 @@ pub struct ComposerInput {
     /// Opt-in so only the message composer highlights commands.
     highlight_commands: bool,
     command_highlight: Option<Range<usize>>,
+    /// Set by the owner: whether the leading command is a skill (distinct badge
+    /// colour) rather than a plain command.
+    command_is_skill: bool,
     /// Find-in-file match ranges painted as washes under the text, sorted and
     /// non-overlapping. Owned by the find bar, which recomputes them whenever
     /// the content or the query changes; the field only paints them.
@@ -629,6 +632,7 @@ impl ComposerInput {
             highlight: Vec::new(),
             highlight_commands: false,
             command_highlight: None,
+            command_is_skill: false,
             search_matches: Vec::new(),
             active_search_match: None,
             content: "".into(),
@@ -760,6 +764,15 @@ impl ComposerInput {
     pub fn highlight_commands(mut self) -> Self {
         self.highlight_commands = true;
         self
+    }
+
+    /// The owner classifies the leading command as a skill or a plain command
+    /// so the badge can colour them differently.
+    pub fn set_command_is_skill(&mut self, is_skill: bool, cx: &mut Context<Self>) {
+        if self.command_is_skill != is_skill {
+            self.command_is_skill = is_skill;
+            cx.notify();
+        }
     }
 
     /// Make the focusing click select the whole content on release, the way a
@@ -2025,7 +2038,7 @@ impl SearchPaint<'static> {
 ///
 /// ponytail: matches any leading `/token`, not only registered commands; pass
 /// the command/skill set through if strict validation is wanted.
-fn leading_command_range(content: &str) -> Option<Range<usize>> {
+pub(super) fn leading_command_range(content: &str) -> Option<Range<usize>> {
     let rest = content.strip_prefix('/')?;
     let mut end = 0;
     for (index, ch) in rest.char_indices() {
@@ -2038,6 +2051,17 @@ fn leading_command_range(content: &str) -> Option<Range<usize>> {
     (end > 0).then_some(0..(1 + end))
 }
 
+/// (text, background) colours for a command badge. Skills get a distinct hue so
+/// they read differently from plain commands.
+fn command_badge_colors(is_skill: bool, theme: &Theme) -> (Hsla, Hsla) {
+    let base = if is_skill {
+        gpui::hsla(265.0 / 360.0, 0.55, 0.62, 1.0)
+    } else {
+        theme.accent
+    };
+    (base, base.opacity(0.16))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn input_text_runs(
     display_len: usize,
@@ -2048,7 +2072,7 @@ fn input_text_runs(
     highlight: &[(Range<usize>, TokenClass)],
     token_color: impl Fn(TokenClass) -> Hsla,
     search: SearchPaint,
-    command: Option<(Range<usize>, Hsla, Hsla)>,
+    command: Option<(Range<usize>, Hsla, gpui::Font)>,
 ) -> Vec<TextRun> {
     let mut boundaries = vec![0, display_len];
     for range in [selected_range, marked_range].into_iter().flatten() {
@@ -2088,13 +2112,10 @@ fn input_text_runs(
             let start = boundary[0];
             let end = boundary[1];
             let token_index = highlight.partition_point(|(range, _)| range.end <= start);
-            let command_covers = command
+            let command_run = command
                 .as_ref()
-                .is_some_and(|(range, _, _)| range.start <= start && range.end >= end);
-            let color = if let Some((_, text_color, _)) = command
-                .as_ref()
-                .filter(|(range, _, _)| range.start <= start && range.end >= end)
-            {
+                .filter(|(range, _, _)| range.start <= start && range.end >= end);
+            let color = if let Some((_, text_color, _)) = command_run {
                 *text_color
             } else {
                 highlight
@@ -2102,6 +2123,8 @@ fn input_text_runs(
                     .filter(|(range, _)| range.start <= start && range.end >= end)
                     .map_or(base_run.color, |(_, class)| token_color(*class))
             };
+            let font = command_run
+                .map_or_else(|| base_run.font.clone(), |(_, _, font)| font.clone());
             let background_color = if search
                 .active
                 .is_some_and(|range| range.start <= start && range.end >= end)
@@ -2111,8 +2134,6 @@ fn input_text_runs(
                 Some(selection_color)
             } else if covering_match(start, end) {
                 Some(search.match_color)
-            } else if command_covers {
-                command.as_ref().map(|(_, _, background)| *background)
             } else {
                 None
             };
@@ -2127,6 +2148,7 @@ fn input_text_runs(
                         thickness: px(1.0),
                         wavy: false,
                     }),
+                font,
                 ..base_run.clone()
             })
         })
@@ -2212,7 +2234,12 @@ impl Element for InputElement {
             (!content_is_empty)
                 .then(|| input.command_highlight.clone())
                 .flatten()
-                .map(|range| (range, theme.accent, theme.accent.opacity(0.12))),
+                .map(|range| {
+                    let (text_color, _) = command_badge_colors(input.command_is_skill, &theme);
+                    let mut font = style.font();
+                    font.weight = gpui::FontWeight::BOLD;
+                    (range, text_color, font)
+                }),
         );
         let mut text = StyledText::new(display_text).with_runs(runs);
         let (layout_id, text_layout_state) = text.request_layout(id, inspector_id, window, cx);
@@ -2315,6 +2342,10 @@ impl Element for InputElement {
         let input = self.input.read(cx);
         let focus_handle = input.focus_handle.clone();
         let visually_focused = input.is_visually_focused(window);
+        let command_badge = input
+            .command_highlight
+            .clone()
+            .map(|range| (range, input.command_is_skill));
         window.handle_input(
             &focus_handle,
             ElementInputHandler::new(bounds, self.input.clone()),
@@ -2334,6 +2365,30 @@ impl Element for InputElement {
                 }
             }
         });
+        // A leading /command paints as a rounded badge behind its bold text.
+        if let Some((range, is_skill)) = command_badge {
+            let layout = layout_state.text.layout();
+            let start = layout.position_for_index(range.start);
+            let end = layout.position_for_index(range.end);
+            let line_height = layout.line_height();
+            if let (Some(start), Some(end)) = (start, end) {
+                let (_, background) = command_badge_colors(is_skill, &Theme::current(cx));
+                let pad_x = px(5.0);
+                let inset_y = px(1.5);
+                let badge = Bounds::from_corners(
+                    point(start.x - pad_x, start.y + inset_y),
+                    point(end.x + pad_x, start.y + line_height - inset_y),
+                );
+                window.paint_quad(gpui::quad(
+                    badge,
+                    px(6.0),
+                    background,
+                    px(0.0),
+                    gpui::transparent_black(),
+                    gpui::BorderStyle::default(),
+                ));
+            }
+        }
         layout_state.text.paint(
             None,
             None,

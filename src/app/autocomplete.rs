@@ -105,6 +105,24 @@ impl Waku {
     /// A cache hit lands immediately; a miss starts discovery on the
     /// background executor and re-runs this when it arrives. Nothing here may
     /// touch the filesystem directly.
+    /// Colour the composer's leading command badge by whether it names a skill.
+    ///
+    /// ponytail: reclassified per keystroke against the current index, so a
+    /// badge stays stale between an index change and the next edit.
+    pub(super) fn refresh_command_badge(&mut self, cx: &mut Context<Self>) {
+        let content = self.composer.read(cx).content().to_owned();
+        let is_skill = crate::input::leading_command_range(&content)
+            .map(|range| &content[1..range.end])
+            .and_then(|name| {
+                self.slash_command_index
+                    .iter()
+                    .find(|command| command.name == name)
+            })
+            .is_some_and(|command| command.scope == composer_complete::CommandScope::Skill);
+        self.composer
+            .update(cx, |input, cx| input.set_command_is_skill(is_skill, cx));
+    }
+
     pub(super) fn refresh_composer_sources(&mut self, cx: &mut Context<Self>) {
         let Some(project_path) = self
             .selected_workspace_path()
