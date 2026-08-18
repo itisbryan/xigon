@@ -3576,9 +3576,11 @@ pub(super) fn visible_picker_tabs(
         let installed = probes
             .iter()
             .any(|probe| probe.provider == kind && probe.installed);
+        // Cross-provider switching is allowed, so every installed provider is a
+        // usable tab; a disabled provider still shows while it is the session's
+        // current provider so the user is never stranded on it.
         let switched_off = disabled_providers.contains(&kind) && locked_provider != Some(kind);
-        let allowed = (locked_provider.is_none() || locked_provider == Some(kind)) && !switched_off;
-        (installed && allowed).then_some(ModelPickerTab::Provider(kind))
+        (installed && !switched_off).then_some(ModelPickerTab::Provider(kind))
     }));
     tabs
 }
@@ -3615,9 +3617,8 @@ pub(super) fn visible_picker_models(
                 .cloned()
                 .map(move |model| (probe.provider, model))
         })
-        .filter(|(kind, _)| locked_provider.is_none() || locked_provider == Some(*kind))
-        // Switched-off providers keep serving the session already locked to
-        // them, but offer nothing to new work — including favorites.
+        // Switched-off providers keep serving the session already on them, but
+        // offer nothing to new work — including favorites.
         .filter(|(kind, _)| !disabled_providers.contains(kind) || locked_provider == Some(*kind))
         .filter(|(kind, model)| {
             if searching {

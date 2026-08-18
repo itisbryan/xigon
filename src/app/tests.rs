@@ -1901,13 +1901,14 @@ fn tab_cycle_walks_favorites_then_usable_providers_in_rail_order() {
         ]
     );
 
-    // A locked session cycles between favorites and its own provider only,
-    // even when that provider was switched off after the session started.
+    // Cross-provider switching is allowed, so the rail offers every installed
+    // provider; the current provider stays even when it was switched off.
     assert_eq!(
         visible_picker_tabs(&probes, &[ProviderKind::Claude], Some(ProviderKind::Claude)),
         vec![
             ModelPickerTab::Favorites,
             ModelPickerTab::Provider(ProviderKind::Claude),
+            ModelPickerTab::Provider(ProviderKind::Codex),
         ]
     );
 }
