@@ -1,88 +1,197 @@
 use super::*;
 
 /// Root view of a torn-off session window. It shares the one `Waku` entity and
-/// renders the session live. The body is a session card for now; the full live
-/// transcript is the next P2 step — it needs per-session transcript state, since
-/// the main window's list/scroll/selection state is a singleton.
+/// renders the session's live transcript with its own list/scroll/selection
+/// state, so it never touches the main window's singletons.
+///
+/// ponytail: message text only (markdown, live streaming). Tool activity, turn
+/// folding, message actions and text selection are the main transcript's; add
+/// them when a detached window needs full parity.
 pub(super) struct DetachedSessionView {
     waku: WeakEntity<Waku>,
     session_id: Uuid,
+    rows: ListState,
+    selection: TranscriptSelection,
+    markdown: RefCell<HashMap<Uuid, MarkdownView>>,
 }
 
 impl DetachedSessionView {
     fn new(waku: &Entity<Waku>, session_id: Uuid, cx: &mut Context<Self>) -> Self {
-        // Re-render whenever shared app state changes, so the card stays live.
+        // Re-render whenever shared app state changes, so streaming stays live.
         cx.observe(waku, |_, _, cx| cx.notify()).detach();
         Self {
             waku: waku.downgrade(),
             session_id,
+            // Bottom alignment keeps the tail pinned as a turn streams in.
+            rows: ListState::new(0, ListAlignment::Bottom, px(2048.0)),
+            selection: TranscriptSelection::default(),
+            markdown: RefCell::new(HashMap::new()),
         }
+    }
+
+    fn detached_row(
+        &mut self,
+        index: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let theme = Theme::current(cx);
+        let palette = MarkdownPalette::from_theme(&theme);
+        let Some((id, role, text, streaming)) = self.waku.upgrade().and_then(|waku| {
+            let waku = waku.read(cx);
+            let session = waku
+                .state
+                .sessions
+                .iter()
+                .find(|session| session.id == self.session_id)?;
+            let message = session.messages.get(index)?;
+            Some((
+                message.id,
+                message.role,
+                message.visible_content().to_owned(),
+                message.streaming,
+            ))
+        }) else {
+            return div().into_any_element();
+        };
+        if text.trim().is_empty() {
+            return div().into_any_element();
+        }
+        let is_user = matches!(role, MessageRole::User);
+        let is_markdown = matches!(role, MessageRole::User | MessageRole::Assistant);
+        let body = if is_markdown {
+            let mut cache = self.markdown.borrow_mut();
+            let view = cache.entry(id).or_insert_with(MarkdownView::new);
+            view.set_text(&text, streaming);
+            let metrics = if is_user {
+                MarkdownMetrics::USER_MESSAGE
+            } else {
+                MarkdownMetrics::BODY
+            };
+            let ctx = MarkdownCtx::new(format!("dm-{id}"), &palette, metrics, self.selection.clone());
+            div()
+                .children(md::render::markdown(view, &ctx))
+                .into_any_element()
+        } else {
+            div()
+                .text_size(px(12.0))
+                .text_color(theme.text_tertiary)
+                .child(SharedString::from(text))
+                .into_any_element()
+        };
+        div()
+            .w_full()
+            .px(px(20.0))
+            .py(px(6.0))
+            .child(
+                div()
+                    .when(is_user, |el| {
+                        el.rounded(px(8.0)).bg(theme.raised).px(px(12.0)).py(px(8.0))
+                    })
+                    .child(body),
+            )
+            .into_any_element()
     }
 }
 
 impl Render for DetachedSessionView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::current(cx);
-        let session_id = self.session_id;
-        let details = self.waku.upgrade().and_then(|waku| {
+        let header = self.waku.upgrade().and_then(|waku| {
             let waku = waku.read(cx);
             waku.state
                 .sessions
                 .iter()
-                .find(|session| session.id == session_id)
+                .find(|session| session.id == self.session_id)
                 .map(|session| {
                     (
                         super::sidebar::localized_session_title(session),
                         session.provider,
                         session.model.clone().unwrap_or_default(),
+                        session.messages.len(),
                     )
                 })
         });
-        let card = match details {
-            Some((title, provider, model)) => div()
+        let Some((title, provider, model, count)) = header else {
+            return div()
+                .size_full()
                 .flex()
-                .flex_col()
-                .gap(px(8.0))
-                .max_w(px(520.0))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(10.0))
-                        .child(icon(provider_icon(provider), 20.0, theme.text_secondary))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .text_size(px(18.0))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(theme.text)
-                                .child(SharedString::from(title)),
-                        ),
-                )
-                .when(!model.is_empty(), |el| {
-                    el.child(
-                        div()
-                            .text_size(px(12.5))
-                            .text_color(theme.text_secondary)
-                            .child(SharedString::from(model)),
-                    )
-                })
-                .into_any_element(),
-            None => div()
-                .text_size(px(13.0))
-                .text_color(theme.text_tertiary)
-                .child("—")
-                .into_any_element(),
+                .items_center()
+                .justify_center()
+                .bg(theme.canvas)
+                .child(div().text_color(theme.text_tertiary).child("—"))
+                .into_any_element();
         };
+        // Reconcile the virtual list length to the live message count.
+        let current = self.rows.item_count();
+        if count > current {
+            self.rows.splice(current..current, count - current);
+        } else if count < current {
+            self.rows.splice(count..current, 0);
+        }
+        let entity = cx.entity().downgrade();
         div()
             .size_full()
             .flex()
-            .items_center()
-            .justify_center()
-            .p(px(24.0))
+            .flex_col()
             .bg(theme.canvas)
             .text_color(theme.text)
-            .child(card)
+            .child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .h(px(38.0))
+                    .px(px(16.0))
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(icon(provider_icon(provider), 15.0, theme.text_secondary))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex_1()
+                            .line_clamp(1)
+                            .text_ellipsis()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.text)
+                            .child(SharedString::from(title)),
+                    )
+                    .when(!model.is_empty(), |el| {
+                        el.child(
+                            div()
+                                .flex_none()
+                                .text_size(px(11.5))
+                                .text_color(theme.text_tertiary)
+                                .child(SharedString::from(model)),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .relative()
+                    // Reset the private selection registry each frame so it
+                    // cannot grow unbounded across renders.
+                    .child(md::render::frame_reset(self.selection.clone()))
+                    .child(
+                        list(self.rows.clone(), move |index, window, cx| {
+                            entity
+                                .upgrade()
+                                .map(|entity| {
+                                    entity.update(cx, |this, cx| {
+                                        this.detached_row(index, window, cx)
+                                    })
+                                })
+                                .unwrap_or_else(|| div().into_any_element())
+                        })
+                        .size_full(),
+                    ),
+            )
+            .into_any_element()
     }
 }
 
