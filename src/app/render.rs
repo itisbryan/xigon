@@ -104,6 +104,7 @@ impl Waku {
             .flex()
             .flex_col()
             .min_h_0()
+            .children(self.render_chat_tab_strip(cx))
             .child(self.render_transcript(window, chat_viewport_width, cx))
             .into_any_element()
     }

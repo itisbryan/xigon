@@ -160,13 +160,16 @@ impl Waku {
         .detach();
     }
 
-    fn activate_session(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
+    pub(super) fn activate_session(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
         let session_changed = self.state.selected_session != Some(session_id);
         if session_changed {
             self.capture_and_save_current_composer_draft(cx);
             self.store_selected_right_panel_state();
         }
         self.state.selected_session = Some(session_id);
+        if !self.chat_tabs.contains(&session_id) {
+            self.chat_tabs.push(session_id);
+        }
         if let Some((project_id, provider, model, reasoning_effort, service_tier, context_window)) =
             self.selected_session().map(|session| {
                 (
@@ -340,6 +343,7 @@ impl Waku {
         self.remove_right_panel_session_state(session_id);
         self.remove_composer_draft(composer_draft_key, cx);
         self.state.sessions.remove(index);
+        self.chat_tabs.retain(|id| *id != session_id);
         if let Err(error) = self.store.remove_session(session_id) {
             self.show_toast(tr!("errors.save_local_state", error = error));
         }

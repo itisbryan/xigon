@@ -1586,7 +1586,7 @@ impl Waku {
     }
 }
 
-fn localized_session_title(session: &AgentSession) -> String {
+pub(super) fn localized_session_title(session: &AgentSession) -> String {
     let title = session.display_title();
     if title == AgentSession::DEFAULT_TITLE {
         tr!("session.new_task")

@@ -1273,6 +1273,8 @@ pub struct Waku {
     right_panel_surfaces: Vec<RightPanelSurface>,
     right_panel_active_surface: Option<usize>,
     right_panel_tabs_scroll_handle: ScrollHandle,
+    chat_tabs: Vec<Uuid>,
+    chat_tabs_scroll_handle: ScrollHandle,
     right_panel_files_scroll_handle: ScrollHandle,
     right_panel_files_scrollbar: Rc<ScrollbarState>,
     right_panel_diff_filter: Entity<ComposerInput>,
@@ -1484,6 +1486,7 @@ pub struct Waku {
 mod autocomplete;
 mod background_work;
 mod branches;
+mod chat_tabs;
 mod command_palette;
 mod commit_dialog;
 mod components;
@@ -2554,6 +2557,7 @@ impl Waku {
                 })
             };
 
+            let chat_tabs = state.selected_session.into_iter().collect::<Vec<_>>();
             Self {
                 daemon,
                 daemon_hostname,
@@ -2702,6 +2706,8 @@ impl Waku {
                 right_panel_surfaces: Vec::new(),
                 right_panel_active_surface: None,
                 right_panel_tabs_scroll_handle: ScrollHandle::new(),
+                chat_tabs,
+                chat_tabs_scroll_handle: ScrollHandle::new(),
                 right_panel_files_scroll_handle: ScrollHandle::new(),
                 right_panel_files_scrollbar: ScrollbarState::new(),
                 right_panel_diff_filter,
