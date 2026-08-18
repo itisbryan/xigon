@@ -1489,6 +1489,7 @@ mod branches;
 mod chat_tabs;
 mod command_palette;
 mod commit_dialog;
+mod detached_window;
 mod components;
 mod composer;
 mod drafts;
