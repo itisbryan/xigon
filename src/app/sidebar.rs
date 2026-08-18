@@ -1142,8 +1142,19 @@ impl Waku {
                     ),
             )
             .when_some(
-                session.workspace.branch().map(str::to_owned),
-                |element, branch| {
+                // Worktree branch is stored on the session; a local session
+                // borrows its project's live branch, resolved in the background.
+                match session.workspace.branch() {
+                    Some(branch) => Some(("icons/fork.svg", branch.to_owned())),
+                    None => self
+                        .state
+                        .projects
+                        .iter()
+                        .find(|project| project.id == session.project_id)
+                        .and_then(|project| self.sidebar_project_branches.get(&project.path))
+                        .map(|branch| ("icons/git-branch.svg", branch.clone())),
+                },
+                |element, (branch_icon, branch)| {
                     element.child(
                         div()
                             .flex()
@@ -1152,7 +1163,7 @@ impl Waku {
                             .text_size(px(11.5))
                             .line_height(px(15.0))
                             .text_color(theme.text_tertiary)
-                            .child(icon("icons/fork.svg", 11.0, theme.text_tertiary))
+                            .child(icon(branch_icon, 11.0, theme.text_tertiary))
                             .child(
                                 div()
                                     .min_w_0()

@@ -115,6 +115,97 @@ impl Waku {
         }
     }
 
+    /// Resolve each project's live Git branch off the render thread so local
+    /// (non-worktree) session rows can show it. Reuses the branch-snapshot
+    /// cache and its `fulfill` generation guard; an unresolved project shows no
+    /// branch until it lands. Cheap enough for `render`: only memory reads plus
+    /// a one-shot fetch per project on a cache miss.
+    ///
+    /// ponytail: a branch can go stale until its project is reselected or the
+    /// snapshot is invalidated; invalidate on a Git event if freshness matters.
+    pub(super) fn refresh_sidebar_project_branches(&mut self, cx: &mut Context<Self>) {
+        let mut paths: Vec<std::path::PathBuf> = Vec::new();
+        for session in &self.state.sessions {
+            if !session.has_started() || session.workspace.is_worktree() {
+                continue;
+            }
+            if let Some(project) = self
+                .state
+                .projects
+                .iter()
+                .find(|project| project.id == session.project_id)
+                .filter(|project| !project.is_projectless())
+                && !paths.contains(&project.path)
+            {
+                paths.push(project.path.clone());
+            }
+        }
+        for path in paths {
+            match self.branch_snapshots.read(&path) {
+                Query::Ready(result) => match result.as_ref() {
+                    Ok(Some(snapshot)) => match snapshot.display_branch() {
+                        Some(branch) => {
+                            self.sidebar_project_branches.insert(path, branch.to_owned());
+                        }
+                        None => {
+                            self.sidebar_project_branches.remove(&path);
+                        }
+                    },
+                    _ => {
+                        self.sidebar_project_branches.remove(&path);
+                    }
+                },
+                Query::Pending => {}
+                Query::Missing(token) => {
+                    let fetch_path = path.clone();
+                    let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+                    cx.spawn(async move |waku, cx| {
+                        let result = cx
+                            .background_executor()
+                            .spawn({
+                                let fetch_path = fetch_path.clone();
+                                async move {
+                                    match workspace.request(
+                                        waku_client::WorkspaceOperation::InspectBranches {
+                                            cwd: fetch_path,
+                                        },
+                                    ) {
+                                        Ok(waku_client::WorkspaceResult::Branches { snapshot }) => {
+                                            Ok(snapshot)
+                                        }
+                                        Ok(_) => Err(
+                                            "the daemon returned an invalid branch response"
+                                                .to_owned(),
+                                        ),
+                                        Err(error) => Err(error.to_string()),
+                                    }
+                                }
+                            })
+                            .await;
+                        let _ = waku.update(cx, |waku, cx| {
+                            if !waku.branch_snapshots.fulfill(token, result.clone()) {
+                                return;
+                            }
+                            match result {
+                                Ok(Some(snapshot)) => {
+                                    if let Some(branch) = snapshot.display_branch() {
+                                        waku.sidebar_project_branches
+                                            .insert(fetch_path, branch.to_owned());
+                                    }
+                                }
+                                _ => {
+                                    waku.sidebar_project_branches.remove(&fetch_path);
+                                }
+                            }
+                            cx.notify();
+                        });
+                    })
+                    .detach();
+                }
+            }
+        }
+    }
+
     pub(super) fn refresh_selected_branch_snapshot(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self
             .selected_workspace_path()

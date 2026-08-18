@@ -1160,6 +1160,9 @@ pub struct Waku {
     /// Git subprocess results per concrete workspace path. Render only reads
     /// this in-memory cache; misses are fulfilled on the background executor.
     branch_snapshots: QueryCache<PathBuf, Result<Option<BranchSnapshot>, String>>,
+    /// Live Git branch per project checkout, resolved off the render thread so
+    /// local session rows can show it. A missing entry means "not resolved yet".
+    sidebar_project_branches: HashMap<PathBuf, String>,
     /// Stale-while-revalidate value for the selected path, avoiding label
     /// flicker when app activation invalidates the query.
     visible_branch_snapshot: Option<(PathBuf, BranchSnapshot)>,
@@ -2643,6 +2646,7 @@ impl Waku {
                 branch_picker_list_state,
                 branch_picker_row_cache: RefCell::new(Vec::new()),
                 branch_snapshots: QueryCache::new(MAX_CACHED_WORKSPACES),
+                sidebar_project_branches: HashMap::new(),
                 visible_branch_snapshot: None,
                 branch_operation_pending: false,
                 commit_dialog: None,
