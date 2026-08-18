@@ -941,6 +941,7 @@ usage.context_window: 上下文窗口
 usage.tokens_in: 输入
 usage.tokens_out: 输出
 usage.cache: 缓存
+usage.cache_hit: 缓存命中
 usage.cache_read: 缓存读取
 usage.cache_write: 缓存写入
 usage.plan_limits: 套餐用量限额

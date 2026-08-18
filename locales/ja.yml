@@ -992,6 +992,7 @@ usage.context_window: コンテキストウインドウ
 usage.tokens_in: 入力
 usage.tokens_out: 出力
 usage.cache: キャッシュ
+usage.cache_hit: キャッシュヒット
 usage.cache_read: キャッシュ読取
 usage.cache_write: キャッシュ書込
 usage.plan_limits: プランの使用量上限

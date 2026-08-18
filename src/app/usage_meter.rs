@@ -457,7 +457,22 @@ fn usage_panel(
                 .child(stat(tr!("usage.tokens_in"), breakdown.input))
                 .child(stat(tr!("usage.tokens_out"), breakdown.output))
                 .child(stat(tr!("usage.cache_read"), breakdown.cache_read))
-                .child(stat(tr!("usage.cache_write"), breakdown.cache_write)),
+                .child(stat(tr!("usage.cache_write"), breakdown.cache_write))
+                .children(breakdown.cache_hit_percent().map(|percent| {
+                    div()
+                        .flex()
+                        .gap(px(4.0))
+                        .child(
+                            div()
+                                .text_color(theme.text_tertiary)
+                                .child(SharedString::from(tr!("usage.cache_hit"))),
+                        )
+                        .child(
+                            div()
+                                .text_color(theme.text_secondary)
+                                .child(SharedString::from(format!("{percent:.0}%"))),
+                        )
+                })),
         );
     }
     if plan.is_some() || error.is_some() || plan_loading {

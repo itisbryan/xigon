@@ -24,8 +24,8 @@ use crate::driver::{
 use crate::model::{
     ActivityItem, ActivityKind, BackgroundWorkEvent, BackgroundWorkItem, BackgroundWorkKey,
     BackgroundWorkKind, BackgroundWorkStatus, DriverEvent, InteractionMode, PermissionOption,
-    ProviderResumeCursor, RuntimeMode, UserInputAnswer, UserInputOption, UserInputQuestion,
-    unix_time_millis,
+    ProviderResumeCursor, RuntimeMode, TokenBreakdown, UserInputAnswer, UserInputOption,
+    UserInputQuestion, unix_time_millis,
 };
 
 const DISABLE_EXTERNAL_COMPUTER_USE_PLUGIN: &str =
@@ -1753,6 +1753,9 @@ fn handle_codex_message(
                     context_window: window,
                 });
             }
+            if let Some(breakdown) = usage.and_then(codex_token_breakdown) {
+                let _ = events.send(DriverEvent::TokenBreakdownUpdated(breakdown));
+            }
         }
         "account/rateLimits/updated" => {
             if let Some(plan) = codex_plan_usage(params.get("rateLimits")) {
@@ -1870,6 +1873,22 @@ fn codex_user_input_questions(params: &Value) -> Vec<UserInputQuestion> {
 /// Map an `account/rateLimits/updated` snapshot into the panel's plan rows.
 /// The primary window is the short lane (300 min on ChatGPT plans), the
 /// secondary the weekly one; both carry a percent and a unix reset time.
+/// Split the newest Codex call's usage. Codex's `inputTokens` includes the
+/// cached prompt (OpenAI convention), so the uncached input is
+/// `inputTokens - cachedInputTokens`, matching Codex's own `non_cached_input`.
+fn codex_token_breakdown(usage: &Value) -> Option<TokenBreakdown> {
+    let last = usage.get("last")?;
+    let field = |name: &str| last.get(name).and_then(Value::as_u64).unwrap_or(0);
+    let cache_read = field("cachedInputTokens");
+    let breakdown = TokenBreakdown {
+        input: field("inputTokens").saturating_sub(cache_read),
+        output: field("outputTokens"),
+        cache_read,
+        cache_write: field("cacheWriteInputTokens"),
+    };
+    (breakdown != TokenBreakdown::default()).then_some(breakdown)
+}
+
 fn codex_plan_usage(snapshot: Option<&Value>) -> Option<crate::usage::PlanUsage> {
     let snapshot = snapshot?;
     let mut windows = Vec::new();
@@ -2260,6 +2279,30 @@ fn is_visible_stderr_notice(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_breakdown_treats_input_tokens_as_including_cache() {
+        // Codex `inputTokens` includes the cached prompt, so uncached input is
+        // inputTokens - cachedInputTokens (its own `non_cached_input`).
+        let usage = json!({
+            "last": {
+                "totalTokens": 12_000,
+                "inputTokens": 10_000,
+                "cachedInputTokens": 8_000,
+                "cacheWriteInputTokens": 500,
+                "outputTokens": 2_000,
+                "reasoningOutputTokens": 0
+            }
+        });
+        let breakdown = codex_token_breakdown(&usage).unwrap();
+        assert_eq!(breakdown.input, 2_000);
+        assert_eq!(breakdown.cache_read, 8_000);
+        assert_eq!(breakdown.cache_write, 500);
+        assert_eq!(breakdown.output, 2_000);
+        // 8000 / (2000 + 8000 + 500) = 76.19%
+        assert_eq!(breakdown.cache_hit_percent().unwrap().round(), 76.0);
+        assert!(codex_token_breakdown(&json!({})).is_none());
+    }
 
     #[test]
     fn parses_current_app_server_user_input_questions() {

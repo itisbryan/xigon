@@ -766,13 +766,24 @@ pub struct ContextUsage {
     pub breakdown: Option<TokenBreakdown>,
 }
 
-/// Per-call token split reported by a provider's usage payload.
+/// Per-call token split reported by a provider's usage payload. `input` is the
+/// uncached prompt; `cache_read`/`cache_write` are the cached prompt served and
+/// written, so the whole prompt is `input + cache_read + cache_write`.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, TS)]
 pub struct TokenBreakdown {
     pub input: u64,
     pub output: u64,
     pub cache_read: u64,
     pub cache_write: u64,
+}
+
+impl TokenBreakdown {
+    /// Fraction of the prompt served from cache, 0-100. `None` when the call
+    /// carried no prompt tokens at all.
+    pub fn cache_hit_percent(&self) -> Option<f64> {
+        let prompt = self.input + self.cache_read + self.cache_write;
+        (prompt > 0).then(|| self.cache_read as f64 * 100.0 / prompt as f64)
+    }
 }
 
 /// Last daemon event incorporated into a session's persisted projection.

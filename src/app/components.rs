@@ -321,16 +321,22 @@ fn render_message_footer(
                     .text_size(px(11.5))
                     .line_height(px(14.0))
                     .text_color(footer_color)
-                    .child(SharedString::from(format!(
-                        "{} {} · {} {} · {} {}/{}",
-                        tr!("usage.tokens_in"),
-                        crate::usage::format_tokens(breakdown.input),
-                        tr!("usage.tokens_out"),
-                        crate::usage::format_tokens(breakdown.output),
-                        tr!("usage.cache"),
-                        crate::usage::format_tokens(breakdown.cache_read),
-                        crate::usage::format_tokens(breakdown.cache_write),
-                    ))),
+                    .child(SharedString::from({
+                        let hit = breakdown
+                            .cache_hit_percent()
+                            .map(|percent| format!(" ({percent:.0}%)"))
+                            .unwrap_or_default();
+                        format!(
+                            "{} {} · {} {} · {} {}/{}{hit}",
+                            tr!("usage.tokens_in"),
+                            crate::usage::format_tokens(breakdown.input),
+                            tr!("usage.tokens_out"),
+                            crate::usage::format_tokens(breakdown.output),
+                            tr!("usage.cache"),
+                            crate::usage::format_tokens(breakdown.cache_read),
+                            crate::usage::format_tokens(breakdown.cache_write),
+                        )
+                    })),
             );
         }
     }

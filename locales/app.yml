@@ -1936,6 +1936,8 @@ usage.tokens_out:
   en: Out
 usage.cache:
   en: Cache
+usage.cache_hit:
+  en: Cache hit
 usage.cache_read:
   en: Cache read
 usage.cache_write:
