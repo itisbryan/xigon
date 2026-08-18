@@ -1039,8 +1039,12 @@ impl AgentSession {
         true
     }
 
-    pub fn can_choose_model(&self, provider: ProviderKind) -> bool {
-        !self.status.is_busy() && (self.messages.is_empty() || self.provider == provider)
+    /// Model choice is allowed whenever no turn is in flight, including across
+    /// providers mid-thread. `choose_model` resets the runtime on a provider
+    /// change so the new provider starts a fresh session while the transcript
+    /// is kept.
+    pub fn can_choose_model(&self, _provider: ProviderKind) -> bool {
+        !self.status.is_busy()
     }
 
     pub fn migrate_legacy_state(&mut self) {
@@ -3300,15 +3304,16 @@ mod tests {
     }
 
     #[test]
-    fn model_selection_keeps_started_sessions_on_their_provider() {
+    fn model_selection_allows_any_provider_while_idle() {
         let project = Project::from_path(PathBuf::from("/tmp/waku"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         assert!(session.can_choose_model(ProviderKind::Claude));
 
         session.push_message(MessageRole::User, "first turn");
+        // Cross-provider switching is allowed mid-thread; the runtime resets.
         assert!(session.can_choose_model(ProviderKind::Codex));
-        assert!(!session.can_choose_model(ProviderKind::Claude));
+        assert!(session.can_choose_model(ProviderKind::Claude));
     }
 
     #[test]

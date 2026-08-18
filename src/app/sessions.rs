@@ -911,6 +911,12 @@ impl Waku {
             session.model = Some(model.clone());
             if provider_changed {
                 session.agent_preset = None;
+                // The new provider is a different binary/protocol, so the old
+                // provider-native resume state can't carry over; drop it so the
+                // next turn starts fresh and a later switch back never resumes
+                // the abandoned session.
+                session.provider_cursor = None;
+                session.provider_session_id = None;
             }
             session.reasoning_effort.clone_from(&reasoning_effort);
             session.service_tier.clone_from(&service_tier);
