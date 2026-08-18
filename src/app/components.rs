@@ -567,16 +567,16 @@ fn render_markdown_message_body<'a>(
         })
 }
 
-/// A user message that is exactly a leading slash command, returned as its
-/// `/command` string for badge rendering (`None` when it has args or trailing
-/// text, which read fine as prose).
+/// Splits a user message that starts with a slash command into its `/command`
+/// and the trailing text (both trimmed). `None` when there is no leading
+/// command.
 ///
 /// ponytail: command colour only — the message carries no scope, so skills are
 /// not distinguished; plumb the command index in to differentiate.
-fn command_only_message(content: &str) -> Option<&str> {
+fn leading_command(content: &str) -> Option<(&str, &str)> {
     let trimmed = content.trim();
     let range = crate::input::leading_command_range(trimmed)?;
-    (range.end == trimmed.len()).then_some(trimmed)
+    Some((&trimmed[..range.end], trimmed[range.end..].trim_start()))
 }
 
 pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement {
@@ -716,18 +716,36 @@ pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement 
                         ),
                 );
             } else {
-                if let Some(command) = command_only_message(&content) {
-                    column = column.child(
-                        div()
-                            .rounded_full()
-                            .bg(theme.accent.opacity(0.14))
-                            .px(px(12.0))
-                            .py(px(5.0))
-                            .text_size(px(13.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme.accent)
-                            .child(SharedString::from(command.to_owned())),
-                    );
+                if let Some((command, rest)) = leading_command(&content) {
+                    let chip = div()
+                        .rounded_full()
+                        .bg(theme.accent.opacity(0.14))
+                        .px(px(12.0))
+                        .py(px(5.0))
+                        .flex_none()
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(theme.accent)
+                        .child(SharedString::from(command.to_owned()));
+                    let mut row = div()
+                        .max_w(px(540.0))
+                        .min_w_0()
+                        .flex()
+                        .items_center()
+                        .flex_wrap()
+                        .gap(px(6.0))
+                        .child(chip);
+                    if !rest.is_empty() {
+                        row = row.child(
+                            div()
+                                .min_w_0()
+                                .text_size(px(14.0))
+                                .line_height(px(20.0))
+                                .text_color(theme.text)
+                                .child(SharedString::from(rest.to_owned())),
+                        );
+                    }
+                    column = column.child(row);
                 } else if !content.trim().is_empty() {
                     let body = render_markdown_message_body(&content, markdown, theme, ctx);
                     column = column.child(
@@ -1482,12 +1500,12 @@ mod message_time_tests {
     }
 
     #[test]
-    fn command_only_message_badges_bare_commands_but_not_prose() {
-        assert_eq!(command_only_message("/compact"), Some("/compact"));
-        assert_eq!(command_only_message("  /compact  "), Some("/compact"));
-        assert_eq!(command_only_message("/compact now"), None);
-        assert_eq!(command_only_message("hello /compact"), None);
-        assert_eq!(command_only_message("just text"), None);
+    fn leading_command_splits_command_and_trailing_text() {
+        assert_eq!(leading_command("/compact"), Some(("/compact", "")));
+        assert_eq!(leading_command("  /compact  "), Some(("/compact", "")));
+        assert_eq!(leading_command("/compact now please"), Some(("/compact", "now please")));
+        assert_eq!(leading_command("hello /compact"), None);
+        assert_eq!(leading_command("just text"), None);
     }
 
     #[test]
