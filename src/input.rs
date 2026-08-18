@@ -2353,9 +2353,11 @@ impl Element for InputElement {
         let input = self.input.read(cx);
         let focus_handle = input.focus_handle.clone();
         let visually_focused = input.is_visually_focused(window);
-        let command_badge = input
-            .command_highlight
-            .clone()
+        // Gate on non-empty content like the run painter does; the cached
+        // range can outlive a clear and must not paint over the placeholder.
+        let command_badge = (!input.content.is_empty())
+            .then(|| input.command_highlight.clone())
+            .flatten()
             .map(|range| (range, input.command_is_skill));
         window.handle_input(
             &focus_handle,
