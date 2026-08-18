@@ -468,6 +468,13 @@ impl Waku {
                     self.state.mark_session_dirty(session_id);
                 }
             }
+            DriverEvent::TokenBreakdownUpdated(breakdown) => {
+                if let Some(session) = self.state.session_mut(session_id) {
+                    let usage = session.context_usage.get_or_insert(ContextUsage::default());
+                    usage.breakdown = Some(breakdown);
+                    self.state.mark_session_dirty(session_id);
+                }
+            }
             DriverEvent::TurnFinished { success, summary } => {
                 self.settle_foreground_work(
                     session_id,

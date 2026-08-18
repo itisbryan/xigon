@@ -1148,6 +1148,9 @@ fn handle_message(
                         context_window: None,
                     });
                 }
+                if let Some(breakdown) = super::support::claude_token_breakdown(usage) {
+                    let _ = events.send(DriverEvent::TokenBreakdownUpdated(breakdown));
+                }
             }
             let Some(content) = value.pointer("/message/content").and_then(Value::as_array) else {
                 return;

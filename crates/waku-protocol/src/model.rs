@@ -754,6 +754,20 @@ pub struct ContextUsage {
     pub tokens: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window: Option<u64>,
+    /// Last call's token split (prompt in, completion out, prompt cache
+    /// read/write). `None` for providers that do not report it; the meter
+    /// then shows only the total.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breakdown: Option<TokenBreakdown>,
+}
+
+/// Per-call token split reported by a provider's usage payload.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, TS)]
+pub struct TokenBreakdown {
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
 }
 
 /// Last daemon event incorporated into a session's persisted projection.
@@ -1625,6 +1639,9 @@ pub enum DriverEvent {
     /// (Codex's `account/rateLimits/updated`). Same shape the OAuth fetcher
     /// produces for Claude, so the panel renders both identically.
     PlanUsageUpdated(crate::usage::PlanUsage),
+    /// Prompt/completion/cache split for the latest call, carried alongside
+    /// [`Self::UsageUpdated`] so the meter can show where tokens went.
+    TokenBreakdownUpdated(TokenBreakdown),
     TurnFinished {
         success: bool,
         summary: Option<String>,

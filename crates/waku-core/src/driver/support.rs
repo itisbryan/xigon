@@ -19,17 +19,35 @@ use crate::model::{ActivityKind, ProviderKind};
 /// output. Multi-call messages carry per-call `iterations`; the last one is
 /// the live context, and summed outer fields would double-count cache reads.
 pub(super) fn claude_context_tokens(usage: &Value) -> Option<u64> {
-    let call = usage
-        .get("iterations")
-        .and_then(Value::as_array)
-        .and_then(|iterations| iterations.last())
-        .unwrap_or(usage);
+    let call = claude_settled_call(usage);
     let field = |name: &str| call.get(name).and_then(Value::as_u64).unwrap_or(0);
     let total = field("input_tokens")
         + field("cache_read_input_tokens")
         + field("cache_creation_input_tokens")
         + field("output_tokens");
     (total > 0).then_some(total)
+}
+
+pub(super) fn claude_token_breakdown(usage: &Value) -> Option<crate::model::TokenBreakdown> {
+    let call = claude_settled_call(usage);
+    let field = |name: &str| call.get(name).and_then(Value::as_u64).unwrap_or(0);
+    let breakdown = crate::model::TokenBreakdown {
+        input: field("input_tokens"),
+        output: field("output_tokens"),
+        cache_read: field("cache_read_input_tokens"),
+        cache_write: field("cache_creation_input_tokens"),
+    };
+    (breakdown != crate::model::TokenBreakdown::default()).then_some(breakdown)
+}
+
+/// Claude reports the final call under `iterations`; usage without iterations
+/// is itself the call.
+fn claude_settled_call(usage: &Value) -> &Value {
+    usage
+        .get("iterations")
+        .and_then(Value::as_array)
+        .and_then(|iterations| iterations.last())
+        .unwrap_or(usage)
 }
 
 #[derive(Clone)]

@@ -30,7 +30,7 @@ use crate::driver::{
 };
 use crate::model::{
     ActivityKind, DriverEvent, InteractionMode, PermissionOption, ProviderResumeCursor,
-    RuntimeMode, UserInputAnswer, UserInputOption, UserInputQuestion,
+    RuntimeMode, TokenBreakdown, UserInputAnswer, UserInputOption, UserInputQuestion,
 };
 use crate::opencode_pool::PooledServer;
 use crate::opencode_session::{
@@ -732,6 +732,18 @@ fn opencode_model_context_windows(response: &Value) -> HashMap<String, u64> {
         .collect()
 }
 
+fn opencode_token_breakdown(info: &Value) -> Option<TokenBreakdown> {
+    let tokens = info.get("tokens")?;
+    let field = |ptr: &str| tokens.pointer(ptr).and_then(Value::as_u64).unwrap_or(0);
+    let breakdown = TokenBreakdown {
+        input: field("/input"),
+        output: field("/output"),
+        cache_read: field("/cache/read"),
+        cache_write: field("/cache/write"),
+    };
+    (breakdown != TokenBreakdown::default()).then_some(breakdown)
+}
+
 fn opencode_context_tokens(info: &Value) -> Option<u64> {
     let tokens = info.get("tokens")?;
     tokens
@@ -863,6 +875,9 @@ fn handle_event(
                         context_tokens,
                         context_window,
                     });
+                }
+                if let Some(breakdown) = opencode_token_breakdown(info) {
+                    let _ = events.send(DriverEvent::TokenBreakdownUpdated(breakdown));
                 }
             }
         }
@@ -1301,6 +1316,24 @@ mod tests {
         assert_eq!(message, "MessageOutputLengthError");
     }
 
+    #[test]
+    fn token_breakdown_reads_the_opencode_tokens_object() {
+        let info = json!({
+            "tokens": {
+                "input": 1200,
+                "output": 340,
+                "reasoning": 5,
+                "cache": { "read": 5000, "write": 20 }
+            }
+        });
+        let breakdown = opencode_token_breakdown(&info).unwrap();
+        assert_eq!(breakdown.input, 1200);
+        assert_eq!(breakdown.output, 340);
+        assert_eq!(breakdown.cache_read, 5000);
+        assert_eq!(breakdown.cache_write, 20);
+        assert!(opencode_token_breakdown(&json!({ "tokens": {} })).is_none());
+    }
+
     /// Drives a real `opencode serve` through the actual driver. Ignored by
     /// default: needs the CLI installed, credentials, and the network. Run with
     /// `cargo test --bin waku opencode_session_against_a_real_server -- --ignored`.
@@ -1586,6 +1619,15 @@ mod tests {
                 context_tokens: Some(15_201),
                 context_window: Some(200_000)
             }
+        ));
+        assert!(matches!(
+            event_rx.try_recv().unwrap(),
+            DriverEvent::TokenBreakdownUpdated(TokenBreakdown {
+                input: 13_399,
+                output: 10,
+                cache_read: 1792,
+                cache_write: 0,
+            })
         ));
         assert!(event_rx.try_recv().is_err());
     }

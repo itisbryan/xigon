@@ -1930,6 +1930,14 @@ usage.shortcut:
   en: Usage (%{shortcut})
 usage.context_window:
   en: Context window
+usage.tokens_in:
+  en: In
+usage.tokens_out:
+  en: Out
+usage.cache_read:
+  en: Cache read
+usage.cache_write:
+  en: Cache write
 usage.plan_limits:
   en: Plan usage limits
 usage.plan_limits_named:

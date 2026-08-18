@@ -431,6 +431,35 @@ fn usage_panel(
             )
             .child(meter_bar(&theme, percent.unwrap_or(0.0))),
     );
+    if let Some(breakdown) = usage.breakdown {
+        let stat = |label: String, value: u64| {
+            div()
+                .flex()
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .text_color(theme.text_tertiary)
+                        .child(SharedString::from(label)),
+                )
+                .child(
+                    div()
+                        .text_color(theme.text_secondary)
+                        .child(SharedString::from(format_tokens(value))),
+                )
+        };
+        panel = panel.child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap_x(px(12.0))
+                .gap_y(px(3.0))
+                .text_size(px(11.0))
+                .child(stat(tr!("usage.tokens_in"), breakdown.input))
+                .child(stat(tr!("usage.tokens_out"), breakdown.output))
+                .child(stat(tr!("usage.cache_read"), breakdown.cache_read))
+                .child(stat(tr!("usage.cache_write"), breakdown.cache_write)),
+        );
+    }
     if plan.is_some() || error.is_some() || plan_loading {
         panel = panel.child(div().h(px(1.0)).flex_none().bg(theme.border));
     }
