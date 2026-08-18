@@ -726,7 +726,9 @@ pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement 
                         .text_size(px(13.5))
                         .font_weight(FontWeight::SEMIBOLD)
                         .text_color(theme.accent)
-                        .child(SharedString::from(command.to_owned()));
+                        .child(SharedString::from(
+                            command.strip_prefix('/').unwrap_or(command).to_owned(),
+                        ));
                     let mut row = div()
                         .max_w(px(540.0))
                         .min_w_0()
