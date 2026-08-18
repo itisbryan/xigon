@@ -116,16 +116,11 @@ impl Waku {
                             glyph,
                         })
                     })
-                    // ponytail: a dummy non-existent path just promotes the drag
-                    // to an OS drag so it can leave the window; another Xigon
-                    // window restores the real ChatTabDrag, and an external-app
-                    // drop finds no file (no-op). Real cross-window move lands
-                    // in (b) when detached windows become tab panes.
-                    .external_drag_payload(|_: &ChatTabDrag, _, _| {
-                        Some(gpui::ExternalDragPayload::Files(gpui::FileDragPaths::new([
-                            (std::path::PathBuf::from("/tmp/.xigon-tab-drag"), false),
-                        ])))
-                    })
+                    // Cross-window drag needs an OS-drag handoff, but GPUI's
+                    // macOS perform_drag_operation panics across the ObjC
+                    // boundary on the synthetic payload (SIGABRT mid-drag), so
+                    // the drag stays in-window. Cross-window move will come via a
+                    // floating proxy window (no OS drag), not external_drag_payload.
                     .drag_over::<ChatTabDrag>(move |style, _, _, _| style.bg(hover_bg))
                     .on_drop(cx.listener(move |this, drag: &ChatTabDrag, _, cx| {
                         this.reorder_chat_tab(drag.session_id, index, cx);
