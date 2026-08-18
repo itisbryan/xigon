@@ -1725,6 +1725,8 @@ transcript.you_stopped_after:
   en: You stopped after %{duration}
 transcript.working_for:
   en: Working for %{duration}
+transcript.compacting:
+  en: Compacting conversation · %{duration}
 transcript.thinking:
   en: Thinking
 transcript.thought_for:

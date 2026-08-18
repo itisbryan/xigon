@@ -1564,12 +1564,30 @@ impl Waku {
     /// produced a single chunk — and stays below whatever streams in until
     /// the turn settles into its "Worked for N" fold.
     fn render_working_indicator_row(&self, theme: &Theme) -> AnyElement {
-        let elapsed = self
+        let (elapsed, compacting) = self
             .selected_session()
-            .and_then(|session| session.turns.last())
-            .filter(|turn| turn.status == TurnStatus::Running)
-            .map(|turn| unix_time().saturating_sub(turn.started_at))
-            .unwrap_or(0);
+            .and_then(|session| {
+                let turn = session
+                    .turns
+                    .last()
+                    .filter(|turn| turn.status == TurnStatus::Running)?;
+                let compacting = session.messages.iter().any(|message| {
+                    message.turn_id == Some(turn.id) && message.role == MessageRole::User && {
+                        // ponytail: matches the manual /compact command only; no
+                        // signal exists for provider auto-compaction.
+                        let prompt = message.visible_content().trim();
+                        prompt == "/compact" || prompt.starts_with("/compact ")
+                    }
+                });
+                Some((unix_time().saturating_sub(turn.started_at), compacting))
+            })
+            .unwrap_or((0, false));
+        let duration = format_working_elapsed(elapsed);
+        let label = if compacting {
+            tr!("transcript.compacting", duration = duration)
+        } else {
+            tr!("transcript.working_for", duration = duration)
+        };
         div()
             .h(px(22.0))
             .flex()
@@ -1582,10 +1600,7 @@ impl Waku {
                     .line_height(px(16.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(theme.text_tertiary)
-                    .child(SharedString::from(tr!(
-                        "transcript.working_for",
-                        duration = format_working_elapsed(elapsed)
-                    ))),
+                    .child(SharedString::from(label)),
             )
             .into_any_element()
     }
