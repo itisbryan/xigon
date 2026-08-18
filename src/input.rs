@@ -2089,6 +2089,7 @@ fn input_text_runs(
     }
     if let Some((range, _, _)) = &command {
         boundaries.push(range.start.min(display_len));
+        boundaries.push((range.start + 1).min(display_len));
         boundaries.push(range.end.min(display_len));
     }
     boundaries.sort_unstable();
@@ -2115,7 +2116,14 @@ fn input_text_runs(
             let command_run = command
                 .as_ref()
                 .filter(|(range, _, _)| range.start <= start && range.end >= end);
-            let color = if let Some((_, text_color, _)) = command_run {
+            // The leading slash paints transparent so only the command name
+            // shows inside the badge; it still exists in the content.
+            let is_command_slash = command
+                .as_ref()
+                .is_some_and(|(range, _, _)| start == range.start && end <= range.start + 1);
+            let color = if is_command_slash {
+                gpui::transparent_black()
+            } else if let Some((_, text_color, _)) = command_run {
                 *text_color
             } else {
                 highlight
@@ -2123,8 +2131,11 @@ fn input_text_runs(
                     .filter(|(range, _)| range.start <= start && range.end >= end)
                     .map_or(base_run.color, |(_, class)| token_color(*class))
             };
-            let font = command_run
-                .map_or_else(|| base_run.font.clone(), |(_, _, font)| font.clone());
+            let font = if is_command_slash {
+                base_run.font.clone()
+            } else {
+                command_run.map_or_else(|| base_run.font.clone(), |(_, _, font)| font.clone())
+            };
             let background_color = if search
                 .active
                 .is_some_and(|range| range.start <= start && range.end >= end)
@@ -2368,7 +2379,8 @@ impl Element for InputElement {
         // A leading /command paints as a rounded badge behind its bold text.
         if let Some((range, is_skill)) = command_badge {
             let layout = layout_state.text.layout();
-            let start = layout.position_for_index(range.start);
+            // Wrap the pill around the name only; the slash renders transparent.
+            let start = layout.position_for_index(range.start + 1);
             let end = layout.position_for_index(range.end);
             let line_height = layout.line_height();
             if let (Some(start), Some(end)) = (start, end) {
