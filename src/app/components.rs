@@ -567,6 +567,18 @@ fn render_markdown_message_body<'a>(
         })
 }
 
+/// A user message that is exactly a leading slash command, returned as its
+/// `/command` string for badge rendering (`None` when it has args or trailing
+/// text, which read fine as prose).
+///
+/// ponytail: command colour only — the message carries no scope, so skills are
+/// not distinguished; plumb the command index in to differentiate.
+fn command_only_message(content: &str) -> Option<&str> {
+    let trimmed = content.trim();
+    let range = crate::input::leading_command_range(trimmed)?;
+    (range.end == trimmed.len()).then_some(trimmed)
+}
+
 pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement {
     let MessageRender {
         theme,
@@ -704,7 +716,19 @@ pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement 
                         ),
                 );
             } else {
-                if !content.trim().is_empty() {
+                if let Some(command) = command_only_message(&content) {
+                    column = column.child(
+                        div()
+                            .rounded_full()
+                            .bg(theme.accent.opacity(0.14))
+                            .px(px(12.0))
+                            .py(px(5.0))
+                            .text_size(px(13.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.accent)
+                            .child(SharedString::from(command.to_owned())),
+                    );
+                } else if !content.trim().is_empty() {
                     let body = render_markdown_message_body(&content, markdown, theme, ctx);
                     column = column.child(
                         div()
@@ -1455,6 +1479,15 @@ mod message_time_tests {
             .timestamp()
             .try_into()
             .expect("test date should have a positive Unix timestamp")
+    }
+
+    #[test]
+    fn command_only_message_badges_bare_commands_but_not_prose() {
+        assert_eq!(command_only_message("/compact"), Some("/compact"));
+        assert_eq!(command_only_message("  /compact  "), Some("/compact"));
+        assert_eq!(command_only_message("/compact now"), None);
+        assert_eq!(command_only_message("hello /compact"), None);
+        assert_eq!(command_only_message("just text"), None);
     }
 
     #[test]
