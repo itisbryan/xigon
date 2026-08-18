@@ -1000,11 +1000,6 @@ impl Waku {
             session.status,
             SessionStatus::Connecting | SessionStatus::Working
         );
-        // Grouped under the project header, so the row shows only its worktree.
-        let subtitle = match session.workspace.branch() {
-            Some(branch) => SharedString::from(branch.to_owned()),
-            None => SharedString::from(tr!("workspace.local")),
-        };
         let rename_input =
             (self.session_rename == Some(session_id)).then(|| self.session_rename_input.clone());
         let renaming = rename_input.is_some();
@@ -1092,38 +1087,14 @@ impl Waku {
                             12.0,
                             status_color(&theme, session.status),
                         ))
-                    }),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(5.0))
-                    .text_size(px(11.5))
-                    .line_height(px(15.0))
-                    .child(icon(
-                        if session.workspace.is_worktree() {
-                            "icons/fork.svg"
-                        } else {
-                            "icons/folder.svg"
-                        },
-                        11.0,
-                        theme.text_tertiary,
-                    ))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_color(theme.text_tertiary)
-                            .child(subtitle),
-                    )
+                    })
                     .when_some(
                         session_time_label(session, unix_time()),
                         |element, label| {
                             element.child(
                                 div()
                                     .flex_none()
+                                    .text_size(px(11.5))
                                     .text_color(if session.is_busy() {
                                         theme.text_tertiary
                                     } else {
@@ -1133,6 +1104,27 @@ impl Waku {
                             )
                         },
                     ),
+            )
+            .when_some(
+                session.workspace.branch().map(str::to_owned),
+                |element, branch| {
+                    element.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.0))
+                            .text_size(px(11.5))
+                            .line_height(px(15.0))
+                            .text_color(theme.text_tertiary)
+                            .child(icon("icons/fork.svg", 11.0, theme.text_tertiary))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .child(SharedString::from(branch)),
+                            ),
+                    )
+                },
             )
             .when(!renaming, |element| {
                 element
