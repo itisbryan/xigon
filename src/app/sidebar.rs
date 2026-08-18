@@ -29,6 +29,23 @@ fn session_group_header(theme: &Theme) -> Div {
         .text_color(theme.text_tertiary)
 }
 
+/// Stable, legible accent for a project's monogram tile. Curated hues only, so
+/// projects stay distinguishable without turning the sidebar into confetti.
+fn project_monogram_color(name: &str) -> gpui::Hsla {
+    const HUES: [f32; 8] = [0.58, 0.40, 0.76, 0.07, 0.94, 0.51, 0.13, 0.00];
+    let hash = name
+        .bytes()
+        .fold(0u32, |acc, byte| acc.wrapping_mul(31).wrapping_add(byte as u32));
+    gpui::hsla(HUES[hash as usize % HUES.len()], 0.50, 0.50, 1.0)
+}
+
+fn project_monogram_char(name: &str) -> char {
+    name.chars()
+        .find(|character| character.is_alphanumeric())
+        .map(|character| character.to_ascii_uppercase())
+        .unwrap_or('#')
+}
+
 fn updater_button_available_content(
     foreground: Hsla,
     label: SharedString,
@@ -842,6 +859,26 @@ impl Waku {
         let chevron = icon("icons/chevron-down.svg", 11.0, theme.text_ghost).when(collapsed, |icon| {
             icon.with_transformation(gpui::Transformation::rotate(gpui::percentage(0.75)))
         });
+        // A colored initial reads as a project's identity; the projectless
+        // bucket keeps the neutral folder.
+        let monogram = if project.is_projectless() {
+            icon("icons/folder.svg", 14.0, theme.text_ghost).into_any_element()
+        } else {
+            div()
+                .w(px(18.0))
+                .h(px(18.0))
+                .flex_none()
+                .rounded(px(5.0))
+                .bg(project_monogram_color(&name))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(10.5))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(gpui::hsla(0.0, 0.0, 1.0, 1.0))
+                .child(SharedString::from(project_monogram_char(&name).to_string()))
+                .into_any_element()
+        };
         div()
             .id(SharedString::from(format!("sidebar-project-{project_id}")))
             .tab_index(0)
@@ -876,7 +913,7 @@ impl Waku {
                         cx.stop_propagation();
                     })),
             )
-            .child(icon("icons/folder.svg", 14.0, theme.text_ghost))
+            .child(monogram)
             .child(
                 div()
                     .flex_1()
@@ -884,6 +921,7 @@ impl Waku {
                     .line_clamp(1)
                     .text_overflow(gpui::TextOverflow::Truncate("...".into()))
                     .text_size(px(13.5))
+                    .font_weight(FontWeight::MEDIUM)
                     .text_color(theme.text)
                     .child(SharedString::from(name)),
             )
@@ -1556,6 +1594,18 @@ fn sidebar_session_selected(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_monogram_extracts_first_alphanumeric_and_is_stable() {
+        assert_eq!(project_monogram_char("spotlight"), 'S');
+        assert_eq!(project_monogram_char("  my-proj"), 'M');
+        assert_eq!(project_monogram_char("123abc"), '1');
+        assert_eq!(project_monogram_char("···"), '#');
+        assert_eq!(
+            project_monogram_color("spotlight"),
+            project_monogram_color("spotlight")
+        );
+    }
 
     #[test]
     fn sidebar_recency_uses_last_reply_with_creation_fallback() {
