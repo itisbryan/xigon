@@ -795,8 +795,10 @@ impl Waku {
         match *row {
             SidebarRow::Search => self.render_sidebar_search(cx).into_any_element(),
             SidebarRow::ProjectsHeader => self.render_projects_header(cx).into_any_element(),
-            SidebarRow::Project(project_id) => self
-                .render_sidebar_project_row(project_id, cx)
+            SidebarRow::Project(project_id) => div()
+                .w_full()
+                .pb(px(4.0))
+                .child(self.render_sidebar_project_row(project_id, cx))
                 .into_any_element(),
             SidebarRow::Session(session_id) => self
                 .render_sidebar_session_item(session_id, cx)
@@ -850,7 +852,6 @@ impl Waku {
         else {
             return div().into_any_element();
         };
-        let selected = self.state.selected_project == Some(project_id);
         let collapsed = self.sidebar_collapsed_projects.contains(&project_id);
         let running = self.state.sessions.iter().any(|session| {
             session.project_id == project_id && session.has_started() && session.is_busy()
@@ -891,9 +892,6 @@ impl Waku {
             .items_center()
             .gap(px(4.0))
             .cursor_default()
-            .when(selected, |element| {
-                element.bg(theme.sidebar_item_background)
-            })
             .hover(|element| element.bg(theme.sidebar_item_background))
             .focus_visible(|element| element.border_1().border_color(theme.accent))
             .child(
