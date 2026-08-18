@@ -55,8 +55,10 @@ Target:
   owns `daemon`, `sessions`, per-session runtime, persistence, and the set of
   `Pane`s and `Window`s. Single source of truth for where every `Item` lives.
 - `Pane` (per tab strip, window-local): ordered `Vec<Item>` + `active: usize` +
-  drag/scroll state. A window has one or more panes (start with one; splits are
-  out of scope, see below).
+  drag/scroll state.
+- `PaneWindow` holds a **layout tree** of panes (leaf = one `Pane`, node =
+  a horizontal/vertical split). P1–P4 use a single-leaf tree; P5 turns on real
+  splits with no further migration.
 - `PaneWindow` (per OS window): the root view. Renders its pane(s), the tab
   strip, window chrome. Holds only window-local presentation (focus, transient
   drag proxy).
@@ -71,15 +73,15 @@ In:
 - Tab strips for chat and right panel, unified drag/tab code.
 - Drag-to-reorder within a strip (animated).
 - Tear-off to a new window on release outside any strip.
-- Drag a tab onto another window's strip.
+- Drag a tab onto another window's strip (macOS first, then Linux/Windows).
+- Split panes side-by-side within a window (P5).
+- Persist/restore the multi-window + split layout across restarts (P4).
+- Merge windows, tab groups, pinned tabs (P6).
 - Smooth motion: reorder slide, tab lift on grab, window spawn.
 
-Out (YAGNI unless asked):
-- Split panes inside one window (side-by-side within a window).
-- Persisting/restoring the multi-window layout across app restarts (P4 later).
-- Merging windows / stacking, tab groups, pinned tabs.
-- Windows on Linux/Windows drag parity beyond what GPUI gives for free (macOS
-  first; the platform-specific bit is only the P3 proxy window).
+Out (genuine non-goals):
+- The web client (`apps/web`) mirroring multi-window — desktop only.
+- Real-time multi-user / shared windows.
 
 ## Phases
 
@@ -132,6 +134,44 @@ Acceptance:
 - Release over no strip → tear-off (P2) instead.
 - Proxy preview tracks the cursor smoothly across windows/displays.
 
+### P4 — Layout persistence
+
+- Serialize the window / split / pane / tab layout (which `Item` is where, active
+  indices, window bounds) into existing app state (`~/.waku/app.json` today).
+- On launch, restore windows and tabs; a missing session/surface is dropped, not
+  fatal.
+
+Acceptance:
+- Quit with 2 windows and a split → relaunch restores both windows, the split,
+  tab order, and active tabs.
+- A session deleted while closed is silently skipped on restore.
+
+### P5 — Split panes within a window
+
+- Turn on the `PaneWindow` layout tree: drop a tab onto the left/right/top/bottom
+  edge zone of a pane → split, creating a new leaf `Pane` holding that tab.
+- Resizable splitter between panes; emptying a pane removes the leaf and
+  rebalances the tree.
+
+Acceptance:
+- Drag a tab to a pane's right edge → two side-by-side panes, tab moved.
+- Drag the last tab out of a split pane → the split collapses back to one pane.
+- Splitter drag resizes; the ratio persists (P4).
+
+### P6 — Merge, tab groups, pinned tabs
+
+- Merge: drag a whole window's strip onto another window → its tabs append there,
+  source window closes.
+- Tab groups: name + colour a contiguous run of tabs; a group moves and tears off
+  as a unit.
+- Pinned tabs: pin keeps a tab first and compact (icon-only) and resists
+  accidental close.
+
+Acceptance:
+- Drag window A's strip onto B → A's tabs join B, A closes.
+- Group 3 tabs, tear the group off → new window with the grouped, coloured tabs.
+- Pin a tab → it sticks to the strip start as an icon; close-all leaves it.
+
 ## Motion
 
 - Grab: tab lifts (scale ~1.02, shadow) — respects `cx.reduce_motion()`.
@@ -147,13 +187,15 @@ Acceptance:
 - **Shared state boundary:** confirm what must be `Workspace`-global vs
   window-local (focus, command palette, find bar are window-local). Getting this
   line right is most of P1's value.
-- **Persistence:** layout restore is out of scope now; note the seam so P4 can
-  add it without another migration.
+- **Persistence (P4):** the `app.json` layout schema must tolerate missing
+  sessions/surfaces on restore and version-migrate the older single-window shape.
 - **Reduce-motion + accessibility:** every drag affordance needs a keyboard path
   (move-tab-to-next-window command) — required, not optional.
 
 ## Acceptance (overall)
 
 Chat and right panel are tab strips; a tab can be reordered, torn into a new
-window keeping its live state, and dragged onto another window's strip, with
-motion that honors reduce-motion and a keyboard equivalent for every drag.
+window keeping its live state, dragged onto another window's strip, and dropped
+to split a pane. The full window / split / tab layout — plus merges, tab groups,
+and pinned tabs — survives restart, with motion that honors reduce-motion and a
+keyboard equivalent for every drag.
