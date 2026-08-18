@@ -106,6 +106,7 @@ impl DetachedSessionView {
 impl Render for DetachedSessionView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::current(cx);
+        let drop_tint = theme.accent.opacity(0.06);
         let header = self.waku.upgrade().and_then(|waku| {
             let waku = waku.read(cx);
             waku.state
@@ -140,11 +141,32 @@ impl Render for DetachedSessionView {
         }
         let entity = cx.entity().downgrade();
         div()
+            .id("detached-window")
             .size_full()
             .flex()
             .flex_col()
             .bg(theme.canvas)
             .text_color(theme.text)
+            // Spike: dropping a chat tab dragged from another window swaps that
+            // session into this window and returns the current one to the strip.
+            .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| style.bg(drop_tint))
+            .on_drop(cx.listener(
+                |this, drag: &super::chat_tabs::ChatTabDrag, _window, cx| {
+                    let incoming = drag.session_id;
+                    if incoming == this.session_id {
+                        return;
+                    }
+                    let outgoing = this.session_id;
+                    this.session_id = incoming;
+                    cx.notify();
+                    if let Some(waku) = this.waku.upgrade() {
+                        waku.update(cx, |waku, cx| {
+                            waku.close_chat_tab(incoming, cx);
+                            waku.readd_chat_tab(outgoing, cx);
+                        });
+                    }
+                },
+            ))
             .child(
                 div()
                     .flex_none()
