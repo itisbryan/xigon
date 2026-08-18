@@ -472,6 +472,12 @@ impl Waku {
                 if let Some(session) = self.state.session_mut(session_id) {
                     let usage = session.context_usage.get_or_insert(ContextUsage::default());
                     usage.breakdown = Some(breakdown);
+                    if let Some(turn_id) = session.active_turn_id()
+                        && let Some(turn) =
+                            session.turns.iter_mut().find(|turn| turn.id == turn_id)
+                    {
+                        turn.breakdown = Some(breakdown);
+                    }
                     self.state.mark_session_dirty(session_id);
                 }
             }

@@ -1934,6 +1934,8 @@ usage.tokens_in:
   en: In
 usage.tokens_out:
   en: Out
+usage.cache:
+  en: Cache
 usage.cache_read:
   en: Cache read
 usage.cache_write:

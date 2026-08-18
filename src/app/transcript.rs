@@ -47,7 +47,7 @@ impl Waku {
     pub(super) fn assistant_response_footer_cached(
         &self,
         message_index: usize,
-    ) -> (Option<SharedString>, Option<u64>) {
+    ) -> (Option<SharedString>, Option<u64>, Option<TokenBreakdown>) {
         self.refresh_transcript_row_kinds();
         let fingerprint = self.transcript_row_kinds_fingerprint.get();
         if self.assistant_footer_fingerprint.get() != fingerprint {
@@ -57,10 +57,11 @@ impl Waku {
         if let Some(cached) = self.assistant_footer_cache.borrow().get(&message_index) {
             return cached.clone();
         }
-        let value = self.selected_session().map_or((None, None), |session| {
+        let value = self.selected_session().map_or((None, None, None), |session| {
             (
                 assistant_response_footer(session, message_index).map(SharedString::from),
                 assistant_response_footer_time(session, message_index),
+                assistant_response_footer_breakdown(session, message_index),
             )
         });
         self.assistant_footer_cache
@@ -651,6 +652,22 @@ pub(super) fn assistant_response_footer_time(
             .and_then(|turn| turn.completed_at)
     });
     Some(completed_at.unwrap_or(message.created_at))
+}
+
+pub(super) fn assistant_response_footer_breakdown(
+    session: &AgentSession,
+    message_index: usize,
+) -> Option<TokenBreakdown> {
+    if assistant_response_footer_index(session, message_index) != Some(message_index) {
+        return None;
+    }
+    session.messages[message_index].turn_id.and_then(|turn_id| {
+        session
+            .turns
+            .iter()
+            .find(|turn| turn.id == turn_id)
+            .and_then(|turn| turn.breakdown)
+    })
 }
 
 /// The visible terminal answer row that owns both the changed-files card and

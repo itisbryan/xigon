@@ -198,6 +198,7 @@ fn render_message_footer(
     theme: &Theme,
     message: &Message,
     footer_time: u64,
+    breakdown: Option<TokenBreakdown>,
     copy_content: SharedString,
     copied: bool,
     group_name: SharedString,
@@ -310,6 +311,28 @@ fn render_message_footer(
             });
         }
         footer = footer.child(timestamp);
+        if let Some(breakdown) = breakdown {
+            footer = footer.child(
+                div()
+                    .px(px(4.0))
+                    .h(px(27.0))
+                    .flex()
+                    .items_center()
+                    .text_size(px(11.5))
+                    .line_height(px(14.0))
+                    .text_color(footer_color)
+                    .child(SharedString::from(format!(
+                        "{} {} · {} {} · {} {}/{}",
+                        tr!("usage.tokens_in"),
+                        crate::usage::format_tokens(breakdown.input),
+                        tr!("usage.tokens_out"),
+                        crate::usage::format_tokens(breakdown.output),
+                        tr!("usage.cache"),
+                        crate::usage::format_tokens(breakdown.cache_read),
+                        crate::usage::format_tokens(breakdown.cache_write),
+                    ))),
+            );
+        }
     }
 
     if let Some(action) = user_message_action {
@@ -347,6 +370,7 @@ pub(super) struct MessageRender<'a> {
     pub(super) message: &'a Message,
     pub(super) assistant_footer_copy_content: Option<SharedString>,
     pub(super) assistant_footer_time: Option<u64>,
+    pub(super) assistant_footer_breakdown: Option<TokenBreakdown>,
     pub(super) assistant_before_footer: Option<AnyElement>,
     pub(super) copied: bool,
     pub(super) assistant_message_action: Option<AssistantMessageAction>,
@@ -543,6 +567,7 @@ pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement 
         message,
         assistant_footer_copy_content,
         assistant_footer_time,
+        assistant_footer_breakdown,
         assistant_before_footer,
         copied,
         assistant_message_action,
@@ -692,6 +717,7 @@ pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement 
                     theme,
                     message,
                     message.created_at,
+                    None,
                     SharedString::from(content.clone()),
                     copied,
                     group_name,
@@ -723,6 +749,7 @@ pub(super) fn render_message(params: MessageRender, cx: &mut App) -> AnyElement 
                     theme,
                     message,
                     assistant_footer_time.unwrap_or(message.created_at),
+                    assistant_footer_breakdown,
                     copy_content,
                     copied,
                     group_name,

@@ -1086,8 +1086,11 @@ impl Waku {
                 .cloned()
                 .map(|message| {
                     let copied = self.copied_message_feedback.contains_key(&message.id);
-                    let (assistant_footer_copy_content, assistant_footer_time) =
-                        self.assistant_response_footer_cached(message_index);
+                    let (
+                        assistant_footer_copy_content,
+                        assistant_footer_time,
+                        assistant_footer_breakdown,
+                    ) = self.assistant_response_footer_cached(message_index);
                     let assistant_before_footer = assistant_footer_copy_content
                         .as_ref()
                         .and(message.turn_id)
@@ -1161,6 +1164,7 @@ impl Waku {
                             message: &message,
                             assistant_footer_copy_content,
                             assistant_footer_time,
+                            assistant_footer_breakdown,
                             assistant_before_footer,
                             copied,
                             assistant_message_action,

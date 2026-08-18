@@ -742,6 +742,11 @@ pub struct AgentTurn {
     pub completed_at: Option<u64>,
     #[serde(default)]
     pub checkpoint: Option<Checkpoint>,
+    /// Token split reported for this turn's provider call, shown in the
+    /// response footer. `None` until the provider reports it (or never, for
+    /// providers that do not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breakdown: Option<TokenBreakdown>,
 }
 
 /// How full the provider's context window is, from the latest main-thread
@@ -1141,6 +1146,7 @@ impl AgentSession {
                 started_at,
                 completed_at: Some(completed_at),
                 checkpoint: None,
+                breakdown: None,
             });
         }
     }
@@ -1167,6 +1173,7 @@ impl AgentSession {
             started_at: now,
             completed_at: None,
             checkpoint: None,
+            breakdown: None,
         });
         self.messages.push(
             Message::new_for_turn(MessageRole::User, prompt, id)
