@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Days, Local, NaiveDate, Utc};
+use chrono::{Datelike, Local, NaiveDate};
 use gpui::{KeyBinding, actions};
 
 use super::*;
@@ -18,85 +18,6 @@ pub fn init(cx: &mut App) {
     )]);
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) enum SessionDateGroup {
-    Today,
-    Yesterday,
-    ThisWeek,
-    ThisMonth,
-    ThisYear,
-    More,
-}
-
-impl SessionDateGroup {
-    const ALL: [Self; 6] = [
-        Self::Today,
-        Self::Yesterday,
-        Self::ThisWeek,
-        Self::ThisMonth,
-        Self::ThisYear,
-        Self::More,
-    ];
-
-    fn index(self) -> usize {
-        match self {
-            Self::Today => 0,
-            Self::Yesterday => 1,
-            Self::ThisWeek => 2,
-            Self::ThisMonth => 3,
-            Self::ThisYear => 4,
-            Self::More => 5,
-        }
-    }
-
-    fn label(self) -> String {
-        match self {
-            Self::Today => tr!("sidebar.today"),
-            Self::Yesterday => tr!("sidebar.yesterday"),
-            Self::ThisWeek => tr!("sidebar.this_week"),
-            Self::ThisMonth => tr!("sidebar.this_month"),
-            Self::ThisYear => tr!("sidebar.this_year"),
-            Self::More => tr!("sidebar.more"),
-        }
-    }
-}
-
-fn session_date_group(timestamp: u64, today: NaiveDate) -> SessionDateGroup {
-    let session_date = i64::try_from(timestamp)
-        .ok()
-        .and_then(|timestamp| DateTime::<Utc>::from_timestamp(timestamp, 0))
-        .map(|timestamp| timestamp.with_timezone(&Local).date_naive())
-        .unwrap_or(today);
-    session_date_group_for_dates(session_date, today)
-}
-
-fn session_date_group_for_dates(session_date: NaiveDate, today: NaiveDate) -> SessionDateGroup {
-    if session_date >= today {
-        return SessionDateGroup::Today;
-    }
-
-    if today.pred_opt() == Some(session_date) {
-        return SessionDateGroup::Yesterday;
-    }
-
-    let week_start = today
-        .checked_sub_days(Days::new(today.weekday().num_days_from_monday().into()))
-        .unwrap_or(today);
-    if session_date >= week_start {
-        return SessionDateGroup::ThisWeek;
-    }
-
-    if session_date.year() == today.year() && session_date.month() == today.month() {
-        return SessionDateGroup::ThisMonth;
-    }
-
-    if session_date.year() == today.year() {
-        return SessionDateGroup::ThisYear;
-    }
-
-    SessionDateGroup::More
-}
-
 fn session_group_header(theme: &Theme) -> Div {
     div()
         .h(px(28.0))
@@ -106,23 +27,6 @@ fn session_group_header(theme: &Theme) -> Div {
         .text_size(px(12.5))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme.text_tertiary)
-}
-
-fn append_sidebar_group_rows(
-    rows: &mut Vec<SidebarRow>,
-    group: SessionDateGroup,
-    sessions: &[Uuid],
-    collapsed: bool,
-) {
-    if sessions.is_empty() {
-        return;
-    }
-
-    rows.push(SidebarRow::Header(group));
-    if !collapsed {
-        rows.extend(sessions.iter().copied().map(SidebarRow::Session));
-    }
-    rows.push(SidebarRow::GroupSpacer);
 }
 
 fn updater_button_available_content(
@@ -211,14 +115,12 @@ pub(super) enum SidebarRow {
     Search,
     /// Header of the projects section.
     ProjectsHeader,
-    /// An added project, listed even before it has any started session.
+    /// A project group header: collapsible, carries the running indicator, and
+    /// selects the project when clicked.
     Project(Uuid),
-    /// Date-group header; the first row also carries the project action when
-    /// no projects section is present.
-    Header(SessionDateGroup),
-    /// A started session.
+    /// A started session, listed under its project group.
     Session(Uuid),
-    /// Spacing between date groups.
+    /// Spacing between project groups.
     GroupSpacer,
 }
 
@@ -770,13 +672,11 @@ impl Waku {
         }
         // A set has no stable iteration order; combine order-independently.
         let collapsed = self
-            .sidebar_collapsed_groups
+            .sidebar_collapsed_projects
             .iter()
-            .fold(0u64, |combined, group| {
-                combined.wrapping_add(mix(0, group.index() as u64 + 1))
-            });
+            .fold(0u64, |combined, id| combined.wrapping_add(mix_uuid(0, *id)));
         fingerprint = mix(
-            mix(fingerprint, self.sidebar_collapsed_groups.len() as u64),
+            mix(fingerprint, self.sidebar_collapsed_projects.len() as u64),
             collapsed,
         );
         if self.sidebar_rows_fingerprint.get() != Some(fingerprint) {
@@ -788,46 +688,55 @@ impl Waku {
 
     /// Snapshot the session history as a flat list of lightweight rows, newest
     /// first, grouped by calendar period like the previous eager render.
-    fn sidebar_rows(&self, today: NaiveDate) -> Vec<SidebarRow> {
-        let mut grouped_sessions: [Vec<Uuid>; 6] = std::array::from_fn(|_| Vec::new());
-        let mut sorted_sessions = self
+    fn sidebar_rows(&self, _today: NaiveDate) -> Vec<SidebarRow> {
+        // Group started sessions under their project, newest first within each.
+        let mut by_project: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        let mut recency: HashMap<Uuid, u64> = HashMap::new();
+        let mut sorted = self
             .state
             .sessions
             .iter()
             .filter(|session| session.has_started())
             .collect::<Vec<_>>();
-        sorted_sessions
-            .sort_by_key(|session| std::cmp::Reverse(sidebar_session_timestamp(session)));
-        for session in sorted_sessions {
-            grouped_sessions[session_date_group(sidebar_session_timestamp(session), today).index()]
+        sorted.sort_by_key(|session| std::cmp::Reverse(sidebar_session_timestamp(session)));
+        for session in sorted {
+            let timestamp = sidebar_session_timestamp(session);
+            by_project
+                .entry(session.project_id)
+                .or_default()
                 .push(session.id);
+            recency
+                .entry(session.project_id)
+                .and_modify(|latest| *latest = (*latest).max(timestamp))
+                .or_insert(timestamp);
         }
 
-        let mut rows = vec![SidebarRow::Search];
-        let project_ids = self
+        // Non-projectless projects always show, even with no sessions; a
+        // projectless bucket shows only when it holds sessions.
+        let mut project_ids = self
             .state
             .projects
             .iter()
-            .filter(|project| !project.is_projectless())
+            .filter(|project| !project.is_projectless() || by_project.contains_key(&project.id))
             .map(|project| project.id)
             .collect::<Vec<_>>();
-        if !project_ids.is_empty() {
-            rows.push(SidebarRow::ProjectsHeader);
-            rows.extend(project_ids.into_iter().map(SidebarRow::Project));
+        for id in by_project.keys() {
+            if !project_ids.contains(id) {
+                project_ids.push(*id);
+            }
+        }
+        // Active projects float up; projects with no sessions sort last.
+        project_ids.sort_by_key(|id| std::cmp::Reverse(recency.get(id).copied().unwrap_or(0)));
+
+        let mut rows = vec![SidebarRow::Search, SidebarRow::ProjectsHeader];
+        for id in project_ids {
+            rows.push(SidebarRow::Project(id));
+            if !self.sidebar_collapsed_projects.contains(&id)
+                && let Some(sessions) = by_project.get(&id)
+            {
+                rows.extend(sessions.iter().copied().map(SidebarRow::Session));
+            }
             rows.push(SidebarRow::GroupSpacer);
-        }
-        for group in SessionDateGroup::ALL {
-            let group_sessions = &grouped_sessions[group.index()];
-            append_sidebar_group_rows(
-                &mut rows,
-                group,
-                group_sessions,
-                self.sidebar_collapsed_groups.contains(&group),
-            );
-        }
-        if rows.len() == 1 {
-            // Keep the project action visible while there is no history.
-            rows.push(SidebarRow::Header(SessionDateGroup::Today));
         }
         rows
     }
@@ -872,9 +781,6 @@ impl Waku {
             SidebarRow::Project(project_id) => self
                 .render_sidebar_project_row(project_id, cx)
                 .into_any_element(),
-            SidebarRow::Header(group) => self
-                .render_sidebar_group_header(group, index == 1, cx)
-                .into_any_element(),
             SidebarRow::Session(session_id) => self
                 .render_sidebar_session_item(session_id, cx)
                 .into_any_element(),
@@ -882,8 +788,7 @@ impl Waku {
         }
     }
 
-    /// Header of the projects section; carries the add-project action so it
-    /// stays visible even when no date-group header is the first row.
+    /// Top title of the project-grouped sidebar; carries the add-project action.
     fn render_projects_header(&self, cx: &mut Context<Self>) -> Div {
         let theme = Theme::current(cx);
         session_group_header(&theme)
@@ -891,6 +796,27 @@ impl Waku {
             .justify_between()
             .child(tr!("sidebar.projects"))
             .child(self.render_sidebar_project_action(cx))
+    }
+
+    fn toggle_sidebar_project(&mut self, project_id: Uuid, cx: &mut Context<Self>) {
+        let collapsed = !self.sidebar_collapsed_projects.contains(&project_id);
+        self.set_sidebar_project_collapsed(project_id, collapsed, cx);
+    }
+
+    fn set_sidebar_project_collapsed(
+        &mut self,
+        project_id: Uuid,
+        collapsed: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = if collapsed {
+            self.sidebar_collapsed_projects.insert(project_id)
+        } else {
+            self.sidebar_collapsed_projects.remove(&project_id)
+        };
+        if changed {
+            cx.notify();
+        }
     }
 
     fn render_sidebar_project_row(
@@ -908,22 +834,48 @@ impl Waku {
             return div().into_any_element();
         };
         let selected = self.state.selected_project == Some(project_id);
+        let collapsed = self.sidebar_collapsed_projects.contains(&project_id);
+        let running = self.state.sessions.iter().any(|session| {
+            session.project_id == project_id && session.has_started() && session.is_busy()
+        });
+        let name = project.display_name();
+        let chevron = icon("icons/chevron-down.svg", 11.0, theme.text_ghost).when(collapsed, |icon| {
+            icon.with_transformation(gpui::Transformation::rotate(gpui::percentage(0.75)))
+        });
         div()
             .id(SharedString::from(format!("sidebar-project-{project_id}")))
             .tab_index(0)
             .w_full()
             .h(px(28.0))
-            .px(px(8.0))
+            .pl(px(4.0))
+            .pr(px(8.0))
             .rounded(px(6.0))
             .flex()
             .items_center()
-            .gap(px(6.0))
+            .gap(px(4.0))
             .cursor_default()
             .when(selected, |element| {
                 element.bg(theme.sidebar_item_background)
             })
             .hover(|element| element.bg(theme.sidebar_item_background))
             .focus_visible(|element| element.border_1().border_color(theme.accent))
+            .child(
+                // Distinct hit target: the chevron toggles the group without
+                // selecting the project.
+                div()
+                    .id(SharedString::from(format!("sidebar-project-toggle-{project_id}")))
+                    .w(px(18.0))
+                    .h(px(18.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(chevron)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.toggle_sidebar_project(project_id, cx);
+                        cx.stop_propagation();
+                    })),
+            )
             .child(icon("icons/folder.svg", 14.0, theme.text_ghost))
             .child(
                 div()
@@ -933,102 +885,36 @@ impl Waku {
                     .text_overflow(gpui::TextOverflow::Truncate("...".into()))
                     .text_size(px(13.5))
                     .text_color(theme.text)
-                    .child(SharedString::from(project.display_name())),
+                    .child(SharedString::from(name)),
             )
+            .when(running, |element| {
+                element.child(motion::spin_slow(icon(
+                    "icons/loader-circle.svg",
+                    11.0,
+                    theme.gauge,
+                )))
+            })
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.select_project(project_id, cx);
             }))
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                    this.select_project(project_id, cx);
-                    cx.stop_propagation();
+                match event.keystroke.key.as_str() {
+                    "enter" | "space" => {
+                        this.select_project(project_id, cx);
+                        cx.stop_propagation();
+                    }
+                    "left" if !collapsed => {
+                        this.set_sidebar_project_collapsed(project_id, true, cx);
+                        cx.stop_propagation();
+                    }
+                    "right" if collapsed => {
+                        this.set_sidebar_project_collapsed(project_id, false, cx);
+                        cx.stop_propagation();
+                    }
+                    _ => {}
                 }
             }))
             .into_any_element()
-    }
-
-    fn render_sidebar_group_header(
-        &self,
-        group: SessionDateGroup,
-        first: bool,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let theme = Theme::current(cx);
-        let collapsed = self.sidebar_collapsed_groups.contains(&group);
-        let group_name = SharedString::from(format!("sidebar-group-header-{}", group.index()));
-        let chevron = icon("icons/chevron-down.svg", 11.0, theme.text_ghost)
-            .when(collapsed, |icon| {
-                icon.with_transformation(gpui::Transformation::rotate(gpui::percentage(0.75)))
-            })
-            .invisible()
-            .group_hover(group_name.clone(), |icon| icon.visible());
-
-        session_group_header(&theme)
-            .group(group_name)
-            .w_full()
-            .child(
-                div()
-                    .id(SharedString::from(format!(
-                        "sidebar-group-toggle-{}",
-                        group.index()
-                    )))
-                    .tab_index(0)
-                    .h(px(22.0))
-                    .rounded(px(4.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(5.0))
-                    .cursor_default()
-                    .focus_visible(|style| style.border_1().border_color(theme.accent))
-                    .child(group.label())
-                    .child(chevron)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.toggle_sidebar_group(group, cx);
-                    }))
-                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                        match event.keystroke.key.as_str() {
-                            "enter" | "space" => {
-                                this.toggle_sidebar_group(group, cx);
-                                cx.stop_propagation();
-                            }
-                            "left" if !collapsed => {
-                                this.set_sidebar_group_collapsed(group, true, cx);
-                                cx.stop_propagation();
-                            }
-                            "right" if collapsed => {
-                                this.set_sidebar_group_collapsed(group, false, cx);
-                                cx.stop_propagation();
-                            }
-                            _ => {}
-                        }
-                    })),
-            )
-            .when(first, |element| {
-                element
-                    .justify_between()
-                    .child(self.render_sidebar_project_action(cx))
-            })
-    }
-
-    fn toggle_sidebar_group(&mut self, group: SessionDateGroup, cx: &mut Context<Self>) {
-        let collapsed = !self.sidebar_collapsed_groups.contains(&group);
-        self.set_sidebar_group_collapsed(group, collapsed, cx);
-    }
-
-    fn set_sidebar_group_collapsed(
-        &mut self,
-        group: SessionDateGroup,
-        collapsed: bool,
-        cx: &mut Context<Self>,
-    ) {
-        let changed = if collapsed {
-            self.sidebar_collapsed_groups.insert(group)
-        } else {
-            self.sidebar_collapsed_groups.remove(&group)
-        };
-        if changed {
-            cx.notify();
-        }
     }
 
     fn begin_session_rename(
@@ -1114,16 +1000,10 @@ impl Waku {
             session.status,
             SessionStatus::Connecting | SessionStatus::Working
         );
-        let project_name = self
-            .state
-            .projects
-            .iter()
-            .find(|project| project.id == session.project_id)
-            .map(Project::display_name)
-            .unwrap_or_else(|| tr!("sidebar.unknown_project"));
+        // Grouped under the project header, so the row shows only its worktree.
         let subtitle = match session.workspace.branch() {
-            Some(branch) => SharedString::from(format!("{project_name} · {branch}")),
-            None => SharedString::from(project_name),
+            Some(branch) => SharedString::from(branch.to_owned()),
+            None => SharedString::from(tr!("workspace.local")),
         };
         let rename_input =
             (self.session_rename == Some(session_id)).then(|| self.session_rename_input.clone());
@@ -1174,7 +1054,8 @@ impl Waku {
             .flex()
             .flex_col()
             .gap(px(4.0))
-            .px(px(8.0))
+            .pl(px(22.0))
+            .pr(px(8.0))
             .py(px(7.0))
             .rounded(px(7.0))
             .cursor_default()
@@ -1683,60 +1564,6 @@ fn sidebar_session_selected(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn groups_sessions_by_calendar_period() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let cases = [
-            ((2026, 8, 12), SessionDateGroup::Today),
-            ((2026, 8, 11), SessionDateGroup::Yesterday),
-            ((2026, 8, 10), SessionDateGroup::ThisWeek),
-            ((2026, 8, 1), SessionDateGroup::ThisMonth),
-            ((2026, 1, 1), SessionDateGroup::ThisYear),
-            ((2025, 12, 31), SessionDateGroup::More),
-        ];
-
-        for ((year, month, day), expected) in cases {
-            let session_date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
-            assert_eq!(session_date_group_for_dates(session_date, today), expected);
-        }
-    }
-
-    #[test]
-    fn future_sessions_stay_in_today() {
-        let today = NaiveDate::from_ymd_opt(2026, 8, 12).unwrap();
-        let tomorrow = NaiveDate::from_ymd_opt(2026, 8, 13).unwrap();
-        assert_eq!(
-            session_date_group_for_dates(tomorrow, today),
-            SessionDateGroup::Today
-        );
-    }
-
-    #[test]
-    fn collapsed_sidebar_group_keeps_only_its_header_and_spacer() {
-        let sessions = [Uuid::from_u128(1), Uuid::from_u128(2)];
-        let mut expanded = Vec::new();
-        append_sidebar_group_rows(&mut expanded, SessionDateGroup::Today, &sessions, false);
-        assert_eq!(
-            expanded,
-            vec![
-                SidebarRow::Header(SessionDateGroup::Today),
-                SidebarRow::Session(sessions[0]),
-                SidebarRow::Session(sessions[1]),
-                SidebarRow::GroupSpacer,
-            ]
-        );
-
-        let mut collapsed = Vec::new();
-        append_sidebar_group_rows(&mut collapsed, SessionDateGroup::Today, &sessions, true);
-        assert_eq!(
-            collapsed,
-            vec![
-                SidebarRow::Header(SessionDateGroup::Today),
-                SidebarRow::GroupSpacer,
-            ]
-        );
-    }
 
     #[test]
     fn sidebar_recency_uses_last_reply_with_creation_fallback() {
