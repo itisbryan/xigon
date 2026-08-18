@@ -136,15 +136,25 @@ impl Waku {
     }
 
     fn reorder_chat_tab(&mut self, session_id: Uuid, to_index: usize, cx: &mut Context<Self>) {
-        let Some(from) = self.chat_tabs.iter().position(|id| *id == session_id) else {
-            return;
-        };
-        if from == to_index {
+        if !self.state.sessions.iter().any(|session| session.id == session_id) {
             return;
         }
-        let id = self.chat_tabs.remove(from);
-        let to = to_index.min(self.chat_tabs.len());
-        self.chat_tabs.insert(to, id);
+        match self.chat_tabs.iter().position(|id| *id == session_id) {
+            Some(from) => {
+                if from == to_index {
+                    return;
+                }
+                let id = self.chat_tabs.remove(from);
+                let to = to_index.min(self.chat_tabs.len());
+                self.chat_tabs.insert(to, id);
+            }
+            None => {
+                // A tab dragged in from a detached window joins the main strip;
+                // that window's reconcile drops it on its next render.
+                let to = to_index.min(self.chat_tabs.len());
+                self.chat_tabs.insert(to, session_id);
+            }
+        }
         cx.notify();
     }
 
@@ -176,16 +186,21 @@ impl Waku {
 #[cfg(test)]
 mod tests {
     // Reorder is index arithmetic with a shift when dragging left→right; guard it.
-    fn reorder(tabs: &mut Vec<u8>, from_val: u8, to_index: usize) {
-        let Some(from) = tabs.iter().position(|v| *v == from_val) else {
-            return;
-        };
-        if from == to_index {
-            return;
+    fn reorder(tabs: &mut Vec<u8>, val: u8, to_index: usize) {
+        match tabs.iter().position(|v| *v == val) {
+            Some(from) => {
+                if from == to_index {
+                    return;
+                }
+                let v = tabs.remove(from);
+                let to = to_index.min(tabs.len());
+                tabs.insert(to, v);
+            }
+            None => {
+                let to = to_index.min(tabs.len());
+                tabs.insert(to, val);
+            }
         }
-        let v = tabs.remove(from);
-        let to = to_index.min(tabs.len());
-        tabs.insert(to, v);
     }
 
     #[test]
@@ -201,5 +216,9 @@ mod tests {
         let mut tabs = vec![1u8, 2, 3];
         reorder(&mut tabs, 2, 1); // no-op onto own slot
         assert_eq!(tabs, vec![1, 2, 3]);
+
+        let mut tabs = vec![1u8, 2, 3];
+        reorder(&mut tabs, 9, 1); // foreign tab (from a detached window) joins
+        assert_eq!(tabs, vec![1, 9, 2, 3]);
     }
 }

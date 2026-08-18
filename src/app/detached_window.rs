@@ -1,15 +1,22 @@
 use super::*;
 
-/// Root view of a torn-off session window. It shares the one `Waku` entity and
-/// renders the session's live transcript with its own list/scroll/selection
-/// state, so it never touches the main window's singletons.
+/// Root view of a torn-off window: a small tab strip over its own sessions plus
+/// the active session's live transcript. It shares the one `Waku` entity but
+/// keeps its own list/scroll/selection state, so it never touches the main
+/// window's singletons.
 ///
-/// ponytail: message text only (markdown, live streaming). Tool activity, turn
-/// folding, message actions and text selection are the main transcript's; add
-/// them when a detached window needs full parity.
+/// ponytail: a session lives in exactly one place. `reconcile` drops any tab
+/// that moved back to the main strip, so a drop that adds it there self-heals
+/// here without a central owner registry. Detached↔detached moves and dragging
+/// a detached tab back out (vs. its X button) are deferred to the pane model.
+///
+/// ponytail: transcript is message text only (markdown, live streaming). Tool
+/// activity, turn folding, actions and text selection stay in the main
+/// transcript; add them when a detached window needs full parity.
 pub(super) struct DetachedSessionView {
     waku: WeakEntity<Waku>,
-    session_id: Uuid,
+    tabs: Vec<Uuid>,
+    active: Uuid,
     rows: ListState,
     selection: TranscriptSelection,
     markdown: RefCell<HashMap<Uuid, MarkdownView>>,
@@ -19,18 +26,23 @@ impl DetachedSessionView {
     fn new(waku: &Entity<Waku>, session_id: Uuid, cx: &mut Context<Self>) -> Self {
         // Re-render whenever shared app state changes, so streaming stays live.
         cx.observe(waku, |_, _, cx| cx.notify()).detach();
-        // Closing this window returns the session to the main strip (no delete,
+        // Closing this window returns every tab to the main strip (no delete,
         // no selection steal), completing the tear-off round-trip.
         cx.on_release(|this, cx| {
-            let session_id = this.session_id;
             if let Some(waku) = this.waku.upgrade() {
-                waku.update(cx, |waku, cx| waku.readd_chat_tab(session_id, cx));
+                let tabs = this.tabs.clone();
+                waku.update(cx, |waku, cx| {
+                    for id in tabs {
+                        waku.readd_chat_tab(id, cx);
+                    }
+                });
             }
         })
         .detach();
         Self {
             waku: waku.downgrade(),
-            session_id,
+            tabs: vec![session_id],
+            active: session_id,
             // Bottom alignment keeps the tail pinned as a turn streams in.
             rows: ListState::new(0, ListAlignment::Bottom, px(2048.0)),
             selection: TranscriptSelection::default(),
@@ -46,13 +58,10 @@ impl DetachedSessionView {
     ) -> AnyElement {
         let theme = Theme::current(cx);
         let palette = MarkdownPalette::from_theme(&theme);
+        let active = self.active;
         let Some((id, role, text, streaming)) = self.waku.upgrade().and_then(|waku| {
             let waku = waku.read(cx);
-            let session = waku
-                .state
-                .sessions
-                .iter()
-                .find(|session| session.id == self.session_id)?;
+            let session = waku.state.sessions.iter().find(|session| session.id == active)?;
             let message = session.messages.get(index)?;
             Some((
                 message.id,
@@ -101,28 +110,126 @@ impl DetachedSessionView {
             )
             .into_any_element()
     }
+
+    /// One tab chip in the strip: click to switch, X returns it to the main
+    /// window's strip.
+    fn detached_tab(
+        &self,
+        session_id: Uuid,
+        title: SharedString,
+        glyph: &'static str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let active = self.active == session_id;
+        div()
+            .id(SharedString::from(format!("detached-tab-{session_id}")))
+            .h(px(26.0))
+            .min_w(px(96.0))
+            .max_w(px(200.0))
+            .px(px(8.0))
+            .rounded(px(6.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .cursor_default()
+            .when(active, |el| el.bg(theme.overlay_strong))
+            .when(!active, |el| el.hover(|el| el.bg(theme.overlay)))
+            .child(icon(glyph, 13.0, theme.text_secondary))
+            .child(
+                div()
+                    .min_w_0()
+                    .flex_1()
+                    .line_clamp(1)
+                    .text_ellipsis()
+                    .text_size(px(12.0))
+                    .text_color(if active { theme.text } else { theme.text_secondary })
+                    .child(title),
+            )
+            .child(
+                div()
+                    .id(SharedString::from(format!("detached-close-{session_id}")))
+                    .w(px(16.0))
+                    .h(px(16.0))
+                    .rounded(px(4.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .hover(|el| el.bg(theme.overlay_strong))
+                    .child(icon("icons/x.svg", 10.0, theme.text_tertiary))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.close_detached_tab(session_id, cx);
+                    })),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.active = session_id;
+                cx.notify();
+            }))
+            .into_any_element()
+    }
+
+    /// Return a tab to the main strip and drop it from this window.
+    fn close_detached_tab(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
+        self.tabs.retain(|id| *id != session_id);
+        if self.active == session_id {
+            if let Some(first) = self.tabs.first().copied() {
+                self.active = first;
+            }
+        }
+        if let Some(waku) = self.waku.upgrade() {
+            waku.update(cx, |waku, cx| waku.readd_chat_tab(session_id, cx));
+        }
+        cx.notify();
+    }
 }
 
 impl Render for DetachedSessionView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::current(cx);
         let drop_tint = theme.accent.opacity(0.06);
-        let header = self.waku.upgrade().and_then(|waku| {
+        // Pull the shared data this frame needs, then drop the borrow before
+        // mutating our own tab list.
+        let snapshot = self.waku.upgrade().map(|waku| {
             let waku = waku.read(cx);
-            waku.state
+            let main: Vec<Uuid> = waku.chat_tabs.clone();
+            let infos: Vec<(Uuid, SharedString, &'static str)> = self
+                .tabs
+                .iter()
+                .filter_map(|id| {
+                    waku.state.sessions.iter().find(|s| s.id == *id).map(|s| {
+                        (
+                            *id,
+                            SharedString::from(super::sidebar::localized_session_title(s)),
+                            provider_icon(s.provider),
+                        )
+                    })
+                })
+                .collect();
+            let active_count = waku
+                .state
                 .sessions
                 .iter()
-                .find(|session| session.id == self.session_id)
-                .map(|session| {
-                    (
-                        super::sidebar::localized_session_title(session),
-                        session.provider,
-                        session.model.clone().unwrap_or_default(),
-                        session.messages.len(),
-                    )
-                })
+                .find(|s| s.id == self.active)
+                .map_or(0, |s| s.messages.len());
+            (main, infos, active_count)
         });
-        let Some((title, provider, model, count)) = header else {
+        let Some((main, infos, active_count)) = snapshot else {
+            return div().size_full().bg(theme.canvas).into_any_element();
+        };
+        // A session lives in exactly one place: drop tabs that moved to the main
+        // strip or no longer exist, and keep the active pointer valid.
+        let live: Vec<Uuid> = infos.iter().map(|(id, _, _)| *id).collect();
+        self.tabs
+            .retain(|id| live.contains(id) && !main.contains(id));
+        if !self.tabs.contains(&self.active) {
+            if let Some(first) = self.tabs.first().copied() {
+                self.active = first;
+            }
+        }
+        if self.tabs.is_empty() {
+            // Emptied by moves; the window is now inert until the user closes it.
             return div()
                 .size_full()
                 .flex()
@@ -131,14 +238,19 @@ impl Render for DetachedSessionView {
                 .bg(theme.canvas)
                 .child(div().text_color(theme.text_tertiary).child("—"))
                 .into_any_element();
-        };
-        // Reconcile the virtual list length to the live message count.
-        let current = self.rows.item_count();
-        if count > current {
-            self.rows.splice(current..current, count - current);
-        } else if count < current {
-            self.rows.splice(count..current, 0);
         }
+        // Reconcile the virtual list length to the active session's messages.
+        let current = self.rows.item_count();
+        if active_count > current {
+            self.rows.splice(current..current, active_count - current);
+        } else if active_count < current {
+            self.rows.splice(active_count..current, 0);
+        }
+        let strip_tabs: Vec<AnyElement> = infos
+            .into_iter()
+            .filter(|(id, _, _)| self.tabs.contains(id))
+            .map(|(id, title, glyph)| self.detached_tab(id, title, glyph, &theme, cx))
+            .collect();
         let entity = cx.entity().downgrade();
         div()
             .id("detached-window")
@@ -147,23 +259,18 @@ impl Render for DetachedSessionView {
             .flex_col()
             .bg(theme.canvas)
             .text_color(theme.text)
-            // Spike: dropping a chat tab dragged from another window swaps that
-            // session into this window and returns the current one to the strip.
+            // A tab dragged from another window lands here and joins this pane.
             .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| style.bg(drop_tint))
             .on_drop(cx.listener(
                 |this, drag: &super::chat_tabs::ChatTabDrag, _window, cx| {
                     let incoming = drag.session_id;
-                    if incoming == this.session_id {
-                        return;
+                    if !this.tabs.contains(&incoming) {
+                        this.tabs.push(incoming);
                     }
-                    let outgoing = this.session_id;
-                    this.session_id = incoming;
+                    this.active = incoming;
                     cx.notify();
                     if let Some(waku) = this.waku.upgrade() {
-                        waku.update(cx, |waku, cx| {
-                            waku.close_chat_tab(incoming, cx);
-                            waku.readd_chat_tab(outgoing, cx);
-                        });
+                        waku.update(cx, |waku, cx| waku.close_chat_tab(incoming, cx));
                     }
                 },
             ))
@@ -172,32 +279,12 @@ impl Render for DetachedSessionView {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(px(4.0))
                     .h(px(38.0))
-                    .px(px(16.0))
+                    .px(px(8.0))
                     .border_b_1()
                     .border_color(theme.border)
-                    .child(icon(provider_icon(provider), 15.0, theme.text_secondary))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .flex_1()
-                            .line_clamp(1)
-                            .text_ellipsis()
-                            .text_size(px(13.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(theme.text)
-                            .child(SharedString::from(title)),
-                    )
-                    .when(!model.is_empty(), |el| {
-                        el.child(
-                            div()
-                                .flex_none()
-                                .text_size(px(11.5))
-                                .text_color(theme.text_tertiary)
-                                .child(SharedString::from(model)),
-                        )
-                    }),
+                    .children(strip_tabs),
             )
             .child(
                 div()
@@ -241,8 +328,8 @@ impl Waku {
             return;
         };
         let waku = cx.entity();
-        // ponytail: fixed placement; drop-point / desktop-drop needs P3's
-        // external drag payload, so v1 opens at a fixed offset.
+        // ponytail: fixed placement; drop-point / desktop-drop needs the OS
+        // drag payload, so v1 opens at a fixed offset.
         let bounds = gpui::Bounds {
             origin: gpui::point(px(140.0), px(140.0)),
             size: gpui::size(px(760.0), px(620.0)),
