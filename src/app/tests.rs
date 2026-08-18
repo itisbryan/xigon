@@ -2,7 +2,7 @@ use super::composer::{
     ComposerSubmitAction, composer_submit_action, dropped_file_mention, merged_submission,
     next_picker_highlight, visible_branch_entries,
 };
-use super::runtime::merge_remote_session_catalog;
+use super::runtime::{context_handoff_recap, merge_remote_session_catalog};
 use super::settings::visible_settings_pages;
 use super::{
     ESCAPE_STOP_CONFIRMATION_TIMEOUT, EscapeStopConfirmation, EscapeStopPress, EscapeStopTarget,
@@ -27,6 +27,26 @@ use crate::model::{
     DriverEvent, Message, MessageRole, ProviderKind, ReasoningBlock, RuntimeEventCursor,
     SessionStatus, TranscriptBlock, TurnStatus, UserInputOption, UserInputQuestion,
 };
+
+#[test]
+fn context_handoff_recap_labels_roles_bounds_size_and_skips_empty() {
+    let mut session = AgentSession::new(Uuid::new_v4(), ProviderKind::Codex);
+    session.push_message(MessageRole::User, "fix the parser");
+    session.push_message(MessageRole::Assistant, "done, updated lexer.rs");
+    let recap = context_handoff_recap(&session.messages).unwrap();
+    assert!(recap.contains("User: fix the parser"));
+    assert!(recap.contains("Assistant: done, updated lexer.rs"));
+    assert!(recap.find("User:").unwrap() < recap.find("Assistant:").unwrap());
+
+    let empty = AgentSession::new(Uuid::new_v4(), ProviderKind::Codex);
+    assert!(context_handoff_recap(&empty.messages).is_none());
+
+    let mut big = AgentSession::new(Uuid::new_v4(), ProviderKind::Codex);
+    for _ in 0..500 {
+        big.push_message(MessageRole::User, "x".repeat(100));
+    }
+    assert!(context_handoff_recap(&big.messages).unwrap().len() < 8000);
+}
 
 #[test]
 fn structured_user_input_preserves_question_order_and_custom_answer_precedence() {

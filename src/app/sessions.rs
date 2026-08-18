@@ -930,6 +930,9 @@ impl Waku {
             // A different provider is a different binary and protocol; only a
             // model change within one provider can be applied in session.
             if provider_changed {
+                // The new provider starts blind, so hand it a one-time recap of
+                // the conversation on the next submission.
+                self.pending_context_handoffs.insert(session_id);
                 self.reset_session_runtime(session_id);
                 // A different provider is also a different command registry.
                 self.refresh_composer_sources(cx);

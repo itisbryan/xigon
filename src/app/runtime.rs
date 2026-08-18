@@ -139,6 +139,43 @@ pub(super) fn merge_remote_session_catalog(
 /// Perform every blocking operation between accepting a submission and
 /// starting its provider. This function is called only from the background
 /// executor; the UI thread owns applying the returned workspace afterward.
+/// One-time recap of a session's conversation, prepended to the first prompt
+/// after a cross-provider switch so the new provider has the prior context.
+/// The workspace already holds any file changes, so only the chat is recapped.
+///
+/// ponytail: tail-truncated at ~6k chars; add summarization if a long thread
+/// needs the whole history carried.
+pub(super) fn context_handoff_recap(messages: &[Message]) -> Option<String> {
+    const BUDGET: usize = 6000;
+    let mut parts = Vec::new();
+    let mut used = 0usize;
+    for message in messages.iter().rev() {
+        let label = match message.role {
+            MessageRole::User => "User",
+            MessageRole::Assistant => "Assistant",
+            _ => continue,
+        };
+        let text = message.visible_content().trim();
+        if text.is_empty() {
+            continue;
+        }
+        used += label.len() + text.len();
+        parts.push(format!("{label}: {text}"));
+        if used >= BUDGET {
+            break;
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    parts.reverse();
+    Some(format!(
+        "[Recap of the earlier conversation with a different assistant, for context. \
+         The workspace already reflects any changes made.]\n\n{}",
+        parts.join("\n\n")
+    ))
+}
+
 fn prepare_submission(
     workspace_client: waku_client::WorkspaceClient,
     project: Project,
@@ -2861,11 +2898,27 @@ impl Waku {
     fn submit_submission_for_session(
         &mut self,
         session_id: Uuid,
-        submission: ComposerSubmission,
+        mut submission: ComposerSubmission,
         cx: &mut Context<Self>,
     ) {
         if self.response_fork_preparations.contains_key(&session_id) {
             return;
+        }
+        if self.pending_context_handoffs.remove(&session_id) {
+            let recap = self
+                .state
+                .sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .and_then(|session| context_handoff_recap(&session.messages));
+            if let Some(recap) = recap {
+                // Keep the transcript showing the user's clean text; only the
+                // provider sees the recap.
+                if submission.display_content.is_none() {
+                    submission.display_content = Some(submission.prompt.clone());
+                }
+                submission.prompt = format!("{recap}\n\n---\n\n{}", submission.prompt);
+            }
         }
         let selected = self.state.selected_session == Some(session_id);
         let Some(session) = self
