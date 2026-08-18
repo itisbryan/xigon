@@ -34,9 +34,10 @@ impl Render for ChatTabDragPreview {
 impl Waku {
     /// The chat tab strip above the transcript. One tab per open session:
     /// click to switch, drag to reorder, X to close (the session stays).
-    /// Hidden until a second session is open — a lone session needs no tabs.
+    /// Visible whenever a session is open, so opening more from the sidebar
+    /// visibly grows the strip; hidden only on the empty new-task screen.
     pub(super) fn render_chat_tab_strip(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.chat_tabs.len() < 2 {
+        if self.chat_tabs.is_empty() {
             return None;
         }
         let theme = Theme::current(cx);
