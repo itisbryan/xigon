@@ -1102,6 +1102,11 @@ impl Waku {
                     .gap(px(6.0))
                     .overflow_hidden()
                     .line_height(px(18.0))
+                    .child(icon(
+                        provider_icon(session.provider),
+                        12.5,
+                        provider_color(&theme, session.provider),
+                    ))
                     .child(title)
                     .when(working, |element| {
                         element.child(motion::spin_slow(icon(
