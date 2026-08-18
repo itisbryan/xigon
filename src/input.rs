@@ -537,6 +537,10 @@ pub struct ComposerInput {
     /// Cached token spans over `content`, as absolute byte ranges. Recomputed
     /// only when the content changes, so painting a large file is free.
     highlight: Vec<(Range<usize>, TokenClass)>,
+    /// When set, a leading `/command` token is painted as an accent badge.
+    /// Opt-in so only the message composer highlights commands.
+    highlight_commands: bool,
+    command_highlight: Option<Range<usize>>,
     /// Find-in-file match ranges painted as washes under the text, sorted and
     /// non-overlapping. Owned by the find bar, which recomputes them whenever
     /// the content or the query changes; the field only paints them.
@@ -623,6 +627,8 @@ impl ComposerInput {
             focus_click_select_all: false,
             language: None,
             highlight: Vec::new(),
+            highlight_commands: false,
+            command_highlight: None,
             search_matches: Vec::new(),
             active_search_match: None,
             content: "".into(),
@@ -749,6 +755,13 @@ impl ComposerInput {
         self
     }
 
+    /// Paint a leading `/command` (or skill) token as an accent badge. Only the
+    /// message composer opts in, so other fields keep plain text.
+    pub fn highlight_commands(mut self) -> Self {
+        self.highlight_commands = true;
+        self
+    }
+
     /// Make the focusing click select the whole content on release, the way a
     /// browser address bar arms its URL for retyping. A drag from unfocused
     /// still selects the dragged range, and the next click places the caret.
@@ -773,6 +786,10 @@ impl ComposerInput {
     /// Re-tokenize after a content change. Cheap for a composer (no language),
     /// one linear pass for a code editor.
     fn refresh_highlight(&mut self) {
+        self.command_highlight = self
+            .highlight_commands
+            .then(|| leading_command_range(&self.content))
+            .flatten();
         let Some(language) = self.language else {
             return;
         };
@@ -2003,6 +2020,24 @@ impl SearchPaint<'static> {
     }
 }
 
+/// The leading `/command` token (its slash plus the command name), or `None`
+/// when the content does not start with one.
+///
+/// ponytail: matches any leading `/token`, not only registered commands; pass
+/// the command/skill set through if strict validation is wanted.
+fn leading_command_range(content: &str) -> Option<Range<usize>> {
+    let rest = content.strip_prefix('/')?;
+    let mut end = 0;
+    for (index, ch) in rest.char_indices() {
+        if ch.is_alphanumeric() || matches!(ch, '-' | '_' | ':') {
+            end = index + ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    (end > 0).then_some(0..(1 + end))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn input_text_runs(
     display_len: usize,
@@ -2013,6 +2048,7 @@ fn input_text_runs(
     highlight: &[(Range<usize>, TokenClass)],
     token_color: impl Fn(TokenClass) -> Hsla,
     search: SearchPaint,
+    command: Option<(Range<usize>, Hsla, Hsla)>,
 ) -> Vec<TextRun> {
     let mut boundaries = vec![0, display_len];
     for range in [selected_range, marked_range].into_iter().flatten() {
@@ -2024,6 +2060,10 @@ fn input_text_runs(
         boundaries.push(range.end.min(display_len));
     }
     for range in search.matches {
+        boundaries.push(range.start.min(display_len));
+        boundaries.push(range.end.min(display_len));
+    }
+    if let Some((range, _, _)) = &command {
         boundaries.push(range.start.min(display_len));
         boundaries.push(range.end.min(display_len));
     }
@@ -2048,10 +2088,20 @@ fn input_text_runs(
             let start = boundary[0];
             let end = boundary[1];
             let token_index = highlight.partition_point(|(range, _)| range.end <= start);
-            let color = highlight
-                .get(token_index)
-                .filter(|(range, _)| range.start <= start && range.end >= end)
-                .map_or(base_run.color, |(_, class)| token_color(*class));
+            let command_covers = command
+                .as_ref()
+                .is_some_and(|(range, _, _)| range.start <= start && range.end >= end);
+            let color = if let Some((_, text_color, _)) = command
+                .as_ref()
+                .filter(|(range, _, _)| range.start <= start && range.end >= end)
+            {
+                *text_color
+            } else {
+                highlight
+                    .get(token_index)
+                    .filter(|(range, _)| range.start <= start && range.end >= end)
+                    .map_or(base_run.color, |(_, class)| token_color(*class))
+            };
             let background_color = if search
                 .active
                 .is_some_and(|range| range.start <= start && range.end >= end)
@@ -2061,6 +2111,8 @@ fn input_text_runs(
                 Some(selection_color)
             } else if covering_match(start, end) {
                 Some(search.match_color)
+            } else if command_covers {
+                command.as_ref().map(|(_, _, background)| *background)
             } else {
                 None
             };
@@ -2157,6 +2209,10 @@ impl Element for InputElement {
             },
             |class| palette.token(class),
             search,
+            (!content_is_empty)
+                .then(|| input.command_highlight.clone())
+                .flatten()
+                .map(|range| (range, theme.accent, theme.accent.opacity(0.12))),
         );
         let mut text = StyledText::new(display_text).with_runs(runs);
         let (layout_id, text_layout_state) = text.request_layout(id, inspector_id, window, cx);
@@ -2458,7 +2514,8 @@ mod tests {
     use super::TokenClass;
     use super::{
         ComposerInput, EditHistory, SearchPaint, UNDO_GROUP_INTERVAL, UNDO_HISTORY_CAP,
-        attachment_paste_entries, cursor_should_be_visible, input_text_runs, next_word_boundary,
+        attachment_paste_entries, cursor_should_be_visible, input_text_runs, leading_command_range,
+        next_word_boundary,
         previous_word_boundary, single_line_scroll, trimmed_splice, visual_row_count,
         word_range_at,
     };
@@ -2945,6 +3002,16 @@ mod tests {
     /// same text, so their boundaries have to interleave without either losing
     /// coverage — the runs must still tile the content exactly.
     #[test]
+    fn leading_command_range_covers_the_command_token_only() {
+        assert_eq!(leading_command_range("/compact"), Some(0..8));
+        assert_eq!(leading_command_range("/compact now"), Some(0..8));
+        assert_eq!(leading_command_range("/skill:foo-bar"), Some(0..14));
+        assert_eq!(leading_command_range("/"), None);
+        assert_eq!(leading_command_range("hello /x"), None);
+        assert_eq!(leading_command_range(""), None);
+    }
+
+    #[test]
     fn syntax_colours_and_selection_split_into_tiling_runs() {
         let selection = 4..12;
         let keyword = hsla(0.8, 0.5, 0.6, 1.0);
@@ -2970,6 +3037,7 @@ mod tests {
                 _ => plain,
             },
             SearchPaint::none(),
+            None,
         );
 
         assert_eq!(
@@ -3010,6 +3078,7 @@ mod tests {
             &[],
             |_| hsla(0.0, 0.0, 1.0, 1.0),
             SearchPaint::none(),
+            None,
         );
 
         assert_eq!(
@@ -3065,6 +3134,7 @@ mod tests {
                 match_color,
                 active_color,
             },
+            None,
         );
 
         assert_eq!(runs.iter().map(|run| run.len).sum::<usize>(), 20);
