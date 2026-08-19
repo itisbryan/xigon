@@ -337,31 +337,41 @@ impl Waku {
             return;
         };
         let waku = cx.entity();
-        // ponytail: fixed placement; drop-point / desktop-drop needs the OS
-        // drag payload, so v1 opens at a fixed offset.
-        let bounds = gpui::Bounds {
-            origin: gpui::point(px(140.0), px(140.0)),
-            size: gpui::size(px(760.0), px(620.0)),
-        };
-        let opened = cx.open_window(
-            gpui::WindowOptions {
-                titlebar: Some(gpui::TitlebarOptions {
-                    title: Some(title.into()),
+        // open_window draws the new window synchronously; running that inside the
+        // current event/draw (this is called from a drop or menu handler)
+        // re-enters GPUI's App borrow and aborts (SIGABRT mid-drag). Defer it so
+        // it runs after the event completes. ponytail: fixed placement; drop-point
+        // placement needs the OS drag payload we can't use, so it opens at an offset.
+        cx.defer(move |cx| {
+            let view_waku = waku.clone();
+            let bounds = gpui::Bounds {
+                origin: gpui::point(px(140.0), px(140.0)),
+                size: gpui::size(px(760.0), px(620.0)),
+            };
+            let opened = cx.open_window(
+                gpui::WindowOptions {
+                    titlebar: Some(gpui::TitlebarOptions {
+                        title: Some(title.into()),
+                        ..Default::default()
+                    }),
+                    window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
+                    window_min_size: Some(gpui::size(px(420.0), px(320.0))),
                     ..Default::default()
-                }),
-                window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-                window_min_size: Some(gpui::size(px(420.0), px(320.0))),
-                ..Default::default()
-            },
-            move |_window, cx| cx.new(|cx| DetachedSessionView::new(&waku, session_id, cx)),
-        );
-        if let Ok(handle) = opened {
-            if let Ok(view) = handle.entity(cx) {
-                self.detached_views.retain(|v| v.upgrade().is_some());
-                self.detached_views.push(view.downgrade());
+                },
+                move |_window, cx| {
+                    cx.new(|cx| DetachedSessionView::new(&view_waku, session_id, cx))
+                },
+            );
+            if let Ok(handle) = opened {
+                let _ = waku.update(cx, |waku, cx| {
+                    if let Ok(view) = handle.entity(cx) {
+                        waku.detached_views.retain(|v| v.upgrade().is_some());
+                        waku.detached_views.push(view.downgrade());
+                    }
+                    waku.close_chat_tab(session_id, cx);
+                });
             }
-            self.close_chat_tab(session_id, cx);
-        }
+        });
     }
 
     /// Return a session to the chat strip if it still exists and is not already
