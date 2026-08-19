@@ -95,6 +95,12 @@ impl Waku {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let chat_viewport_width = self.chat_viewport_width(window);
+        let split_tint = Theme::current(cx).accent.opacity(0.06);
+        // Compute the panes first so their (mutable/immutable) borrows of self
+        // do not overlap while building the tree.
+        let strip = self.render_chat_tab_strip(cx);
+        let split = self.render_split_pane(cx);
+        let transcript = self.render_transcript(window, chat_viewport_width, cx);
         // The transcript's own element sizes itself with `flex_1`, which only
         // stretches inside a flex parent. A cached pane lays its content out
         // as a root, so give it that parent here or its height collapses to
@@ -104,8 +110,44 @@ impl Waku {
             .flex()
             .flex_col()
             .min_h_0()
-            .children(self.render_chat_tab_strip(cx))
-            .child(self.render_transcript(window, chat_viewport_width, cx))
+            .children(strip)
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(
+                        // Dropping a chat tab on the transcript opens it in a
+                        // split pane beside this one (multiplexer-style).
+                        div()
+                            .id("transcript-split-drop")
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .w_full()
+                            .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
+                                style.bg(split_tint)
+                            })
+                            .on_drop(cx.listener(
+                                |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
+                                    this.open_split(drag.session_id, cx);
+                                },
+                            ))
+                            .child(transcript),
+                    )
+                    .children(split.map(|pane| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .border_l_1()
+                            .border_color(Theme::current(cx).border)
+                            .child(pane)
+                    })),
+            )
             .into_any_element()
     }
 

@@ -1,8 +1,9 @@
 use super::*;
 
-/// A chat tab being dragged to reorder within the strip.
-struct ChatTabDrag {
-    session_id: Uuid,
+/// A chat tab being dragged to reorder within the strip, or onto the
+/// transcript to open a split pane.
+pub(super) struct ChatTabDrag {
+    pub(super) session_id: Uuid,
 }
 
 /// Floating preview rendered under the cursor while a chat tab is dragged.

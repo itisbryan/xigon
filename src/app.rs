@@ -1275,6 +1275,10 @@ pub struct Waku {
     right_panel_tabs_scroll_handle: ScrollHandle,
     chat_tabs: Vec<Uuid>,
     chat_tabs_scroll_handle: ScrollHandle,
+    split_session: Option<Uuid>,
+    split_rows: ListState,
+    split_selection: TranscriptSelection,
+    split_markdown: RefCell<HashMap<Uuid, MarkdownView>>,
     right_panel_files_scroll_handle: ScrollHandle,
     right_panel_files_scrollbar: Rc<ScrollbarState>,
     right_panel_diff_filter: Entity<ComposerInput>,
@@ -1501,6 +1505,7 @@ mod sessions;
 mod settings;
 mod sidebar;
 mod skills_page;
+mod split_pane;
 mod streaming;
 mod transcript;
 mod transcript_view;
@@ -2708,6 +2713,10 @@ impl Waku {
                 right_panel_tabs_scroll_handle: ScrollHandle::new(),
                 chat_tabs,
                 chat_tabs_scroll_handle: ScrollHandle::new(),
+                split_session: None,
+                split_rows: ListState::new(0, ListAlignment::Bottom, px(2048.0)),
+                split_selection: TranscriptSelection::default(),
+                split_markdown: RefCell::new(HashMap::new()),
                 right_panel_files_scroll_handle: ScrollHandle::new(),
                 right_panel_files_scrollbar: ScrollbarState::new(),
                 right_panel_diff_filter,
