@@ -108,14 +108,8 @@ impl Waku {
                             })),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        // Focus the pane this session is already in — no swap, no
-                        // duplicate. Only a session not on screen replaces main.
-                        if this.split_session == Some(session_id) {
-                            this.split_focused = true;
-                            cx.notify();
-                            return;
-                        }
-                        this.split_focused = false;
+                        // select_session focuses the split pane in place when the
+                        // session is already there, else opens it in the main pane.
                         this.select_session(session_id, cx);
                     }))
                     .on_drag(ChatTabDrag { session_id }, move |_, _, _, cx| {
