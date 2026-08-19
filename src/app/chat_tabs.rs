@@ -105,14 +105,24 @@ impl Waku {
                     .px(px(8.0))
                     .ml(if index == 0 || join_right { px(0.0) } else { px(4.0) })
                     .when(!join_left && !join_right, |el| el.rounded(px(6.0)))
+                    // Joined pair reads as one segmented-control pill: outline the
+                    // outer edges, divide the seam.
                     .when(join_left && !join_right, |el| {
-                        el.rounded_tl(px(6.0)).rounded_bl(px(6.0))
+                        el.rounded_tl(px(6.0))
+                            .rounded_bl(px(6.0))
+                            .border_t_1()
+                            .border_b_1()
+                            .border_l_1()
+                            .border_color(theme.border_strong)
                     })
                     .when(join_right && !join_left, |el| {
                         el.rounded_tr(px(6.0))
                             .rounded_br(px(6.0))
+                            .border_t_1()
+                            .border_b_1()
+                            .border_r_1()
                             .border_l_1()
-                            .border_color(theme.border)
+                            .border_color(theme.border_strong)
                     })
                     .flex_none()
                     .flex()
