@@ -156,8 +156,10 @@ impl Waku {
                             .relative()
                             .border_l_1()
                             .border_color(split_border)
-                            .children(split_handle)
                             .child(pane)
+                            // Handle paints last so it sits above the pane and
+                            // actually receives the mouse-down to start a resize.
+                            .children(split_handle)
                     })),
             )
             .into_any_element()
