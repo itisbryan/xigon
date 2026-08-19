@@ -41,6 +41,43 @@ impl Waku {
         cx.notify();
     }
 
+    /// ⌘\ — split the selected session beside its neighbouring tab.
+    // ponytail: splits with the adjacent chat tab, not a most-recently-used
+    // pick; track last-active order if that ordering ever matters.
+    pub(super) fn split_pane_action(
+        &mut self,
+        _: &SplitPane,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.split_session.is_some() {
+            return;
+        }
+        let Some(current) = self.state.selected_session else {
+            return;
+        };
+        let Some(i) = self.chat_tabs.iter().position(|id| *id == current) else {
+            return;
+        };
+        let neighbour = self
+            .chat_tabs
+            .get(i + 1)
+            .or_else(|| i.checked_sub(1).and_then(|p| self.chat_tabs.get(p)))
+            .copied();
+        if let Some(session_id) = neighbour {
+            self.open_split(session_id, false, cx);
+        }
+    }
+
+    pub(super) fn close_split_action(
+        &mut self,
+        _: &CloseSplit,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_split(cx);
+    }
+
     /// The secondary pane, or `None` when nothing is split.
     pub(super) fn render_split_pane(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let session_id = self.split_session?;
