@@ -39,9 +39,12 @@ impl Waku {
         if previous == Some(split) {
             return;
         }
-        self.select_session(split, cx);
+        // Move the old main session into the split BEFORE selecting, so
+        // activate_session's "selecting the split collapses it" guard sees a
+        // non-matching split and leaves it alone (otherwise this unsplits).
         self.split_session = previous;
         self.split_markdown.borrow_mut().clear();
+        self.select_session(split, cx);
         cx.notify();
     }
 
