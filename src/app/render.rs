@@ -133,25 +133,38 @@ impl Waku {
                         // split pane beside this one (multiplexer-style).
                         div()
                             .id("transcript-split-drop")
+                            .relative()
                             .flex()
                             .flex_col()
                             .flex_grow(left_grow)
                             .flex_basis(px(0.0))
                             .min_h_0()
                             .min_w_0()
-                            // Reserve the frame so lighting it up on drag causes
-                            // no layout shift.
-                            .border_2()
-                            .border_color(gpui::transparent_black())
-                            .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
-                                style.border_color(split_accent).bg(split_wash)
-                            })
-                            .on_drop(cx.listener(
-                                |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
-                                    this.open_split(drag.session_id, cx);
-                                },
-                            ))
-                            .child(transcript),
+                            .child(transcript)
+                            .child(
+                                // Right-half drop target: frames exactly where the
+                                // split pane will open, so the preview shows the
+                                // region, not the whole pane.
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .bottom_0()
+                                    .right_0()
+                                    .w(gpui::relative(0.5))
+                                    .border_2()
+                                    .border_color(gpui::transparent_black())
+                                    .rounded(px(4.0))
+                                    .drag_over::<super::chat_tabs::ChatTabDrag>(
+                                        move |style, _, _, _| {
+                                            style.border_color(split_accent).bg(split_wash)
+                                        },
+                                    )
+                                    .on_drop(cx.listener(
+                                        |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
+                                            this.open_split(drag.session_id, cx);
+                                        },
+                                    )),
+                            ),
                     )
                     .children(split.map(|pane| {
                         div()
