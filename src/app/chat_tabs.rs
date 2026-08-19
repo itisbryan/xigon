@@ -46,6 +46,24 @@ impl Waku {
         let main_id = self.state.selected_session;
         let split_id = self.split_session;
         let is_on = |id: Uuid| main_id == Some(id) || split_id == Some(id);
+        // Render the split pair adjacent so they always fuse into one pill:
+        // keep the main tab in place and pull the split tab right next to it.
+        let order: Vec<Uuid> = match (main_id, split_id) {
+            (Some(main), Some(split)) if main != split => {
+                let mut v = Vec::with_capacity(self.chat_tabs.len());
+                for &id in &self.chat_tabs {
+                    if id == split {
+                        continue;
+                    }
+                    v.push(id);
+                    if id == main {
+                        v.push(split);
+                    }
+                }
+                v
+            }
+            _ => self.chat_tabs.clone(),
+        };
         let mut strip = div()
             .id("chat-tabs")
             .w_full()
@@ -61,18 +79,16 @@ impl Waku {
             .border_color(theme.border)
             .overflow_x_scroll()
             .track_scroll(&self.chat_tabs_scroll_handle);
-        for (index, session_id) in self.chat_tabs.iter().copied().enumerate() {
+        for (index, session_id) in order.iter().copied().enumerate() {
             let Some(session) = self.state.sessions.iter().find(|s| s.id == session_id) else {
                 continue;
             };
-            // Both panes' tabs read as on-screen when split; the focused one
-            // is strongest.
             let on_screen = is_on(session_id);
             // Join adjacent on-screen tabs (the split pair) into one pill.
-            let next_on = self.chat_tabs.get(index + 1).copied().is_some_and(&is_on);
+            let next_on = order.get(index + 1).copied().is_some_and(&is_on);
             let prev_on = index
                 .checked_sub(1)
-                .and_then(|i| self.chat_tabs.get(i))
+                .and_then(|i| order.get(i))
                 .copied()
                 .is_some_and(&is_on);
             let join_left = on_screen && next_on;
@@ -147,22 +163,26 @@ impl Waku {
                     })
                     .drag_over::<ChatTabDrag>(move |style, _, _, _| style.bg(hover_bg))
                     .on_drop(cx.listener(move |this, drag: &ChatTabDrag, _, cx| {
-                        this.reorder_chat_tab(drag.session_id, index, cx);
+                        this.reorder_chat_tab(drag.session_id, session_id, cx);
                     })),
             );
         }
         Some(strip.into_any_element())
     }
 
-    fn reorder_chat_tab(&mut self, session_id: Uuid, to_index: usize, cx: &mut Context<Self>) {
-        let Some(from) = self.chat_tabs.iter().position(|id| *id == session_id) else {
-            return;
-        };
-        if from == to_index {
+    fn reorder_chat_tab(&mut self, dragged: Uuid, target: Uuid, cx: &mut Context<Self>) {
+        if dragged == target {
             return;
         }
+        let Some(from) = self.chat_tabs.iter().position(|id| *id == dragged) else {
+            return;
+        };
         let id = self.chat_tabs.remove(from);
-        let to = to_index.min(self.chat_tabs.len());
+        let to = self
+            .chat_tabs
+            .iter()
+            .position(|x| *x == target)
+            .unwrap_or(self.chat_tabs.len());
         self.chat_tabs.insert(to, id);
         cx.notify();
     }
@@ -198,31 +218,56 @@ impl Waku {
 
 #[cfg(test)]
 mod tests {
-    // Reorder is index arithmetic with a shift when dragging left→right; guard it.
-    fn reorder(tabs: &mut Vec<u8>, val: u8, to_index: usize) {
-        let Some(from) = tabs.iter().position(|v| *v == val) else {
-            return;
-        };
-        if from == to_index {
+    // Drop `dragged` onto `target`: it takes target's slot.
+    fn reorder(tabs: &mut Vec<u8>, dragged: u8, target: u8) {
+        if dragged == target {
             return;
         }
+        let Some(from) = tabs.iter().position(|v| *v == dragged) else {
+            return;
+        };
         let v = tabs.remove(from);
-        let to = to_index.min(tabs.len());
+        let to = tabs.iter().position(|x| *x == target).unwrap_or(tabs.len());
         tabs.insert(to, v);
     }
 
+    fn pair_order(tabs: &[u8], main: Option<u8>, split: Option<u8>) -> Vec<u8> {
+        match (main, split) {
+            (Some(m), Some(s)) if m != s => {
+                let mut v = Vec::with_capacity(tabs.len());
+                for &id in tabs {
+                    if id == s {
+                        continue;
+                    }
+                    v.push(id);
+                    if id == m {
+                        v.push(s);
+                    }
+                }
+                v
+            }
+            _ => tabs.to_vec(),
+        }
+    }
+
     #[test]
-    fn reorder_moves_tab_to_target_slot() {
+    fn reorder_moves_dragged_before_target() {
         let mut tabs = vec![1u8, 2, 3, 4];
-        reorder(&mut tabs, 1, 2); // drag 1 rightwards onto index 2
-        assert_eq!(tabs, vec![2, 3, 1, 4]);
+        reorder(&mut tabs, 1, 3); // drop 1 onto 3
+        assert_eq!(tabs, vec![2, 1, 3, 4]);
 
         let mut tabs = vec![1u8, 2, 3, 4];
-        reorder(&mut tabs, 4, 0); // drag 4 to the front
+        reorder(&mut tabs, 4, 1); // drop 4 onto 1 (to front)
         assert_eq!(tabs, vec![4, 1, 2, 3]);
 
         let mut tabs = vec![1u8, 2, 3];
-        reorder(&mut tabs, 2, 1); // no-op onto own slot
+        reorder(&mut tabs, 2, 2); // onto itself: no-op
         assert_eq!(tabs, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn pair_order_puts_split_next_to_main() {
+        assert_eq!(pair_order(&[1, 2, 3, 4], Some(1), Some(3)), vec![1, 3, 2, 4]);
+        assert_eq!(pair_order(&[1, 2, 3], Some(2), None), vec![1, 2, 3]);
     }
 }
