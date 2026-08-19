@@ -9,20 +9,35 @@ use super::*;
 // message text only. Add: 4-edge splits + a pane tree, focus + compose-to-pane,
 // resizable splitter, tool activity, when a real tiling workflow needs them.
 impl Waku {
+    /// The session the composer targets: the split pane when it is focused,
+    /// otherwise the main pane.
+    pub(super) fn focused_session_id(&self) -> Option<Uuid> {
+        if self.split_focused && self.split_session.is_some() {
+            self.split_session
+        } else {
+            self.state.selected_session
+        }
+    }
+
+    pub(super) fn composer_session(&self) -> Option<&AgentSession> {
+        let id = self.focused_session_id()?;
+        self.state.sessions.iter().find(|session| session.id == id)
+    }
+
     pub(super) fn open_split(&mut self, session_id: Uuid, on_left: bool, cx: &mut Context<Self>) {
-        let changed = self.split_session != Some(session_id) || self.split_on_left != on_left;
         self.split_on_left = on_left;
         if self.split_session != Some(session_id) {
             self.split_session = Some(session_id);
             self.split_markdown.borrow_mut().clear();
         }
-        if changed {
-            cx.notify();
-        }
+        // Focus the freshly split pane so you can type into it immediately.
+        self.split_focused = true;
+        cx.notify();
     }
 
     pub(super) fn close_split(&mut self, cx: &mut Context<Self>) {
         self.split_session = None;
+        self.split_focused = false;
         cx.notify();
     }
 
@@ -39,6 +54,7 @@ impl Waku {
         else {
             // Session gone; collapse the split on the next frame.
             self.split_session = None;
+            self.split_focused = false;
             return None;
         };
         let current = self.split_rows.item_count();

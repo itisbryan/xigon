@@ -43,7 +43,7 @@ impl Waku {
         }
         let theme = Theme::current(cx);
         let hover_bg = theme.accent.opacity(0.16);
-        let selected = self.state.selected_session;
+        let selected = self.focused_session_id();
         let mut strip = div()
             .id("chat-tabs")
             .w_full()
@@ -108,11 +108,14 @@ impl Waku {
                             })),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        // Already shown in the split pane? Do nothing — don't swap
-                        // the panes' positions or duplicate the session.
+                        // Focus the pane this session is already in — no swap, no
+                        // duplicate. Only a session not on screen replaces main.
                         if this.split_session == Some(session_id) {
+                            this.split_focused = true;
+                            cx.notify();
                             return;
                         }
+                        this.split_focused = false;
                         this.select_session(session_id, cx);
                     }))
                     .on_drag(ChatTabDrag { session_id }, move |_, _, _, cx| {
@@ -151,6 +154,7 @@ impl Waku {
         self.chat_tabs.remove(index);
         if self.split_session == Some(session_id) {
             self.split_session = None;
+            self.split_focused = false;
         }
         if self.state.selected_session != Some(session_id) {
             cx.notify();

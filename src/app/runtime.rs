@@ -2727,7 +2727,8 @@ impl Waku {
         submission: ComposerSubmission,
         cx: &mut Context<Self>,
     ) {
-        let Some(session) = self.selected_session() else {
+        // Target the focused pane (the split when it's focused, else main).
+        let Some(session) = self.composer_session() else {
             return;
         };
         if self.response_fork_preparations.contains_key(&session.id) {
@@ -2750,7 +2751,7 @@ impl Waku {
         submission: ComposerSubmission,
         cx: &mut Context<Self>,
     ) {
-        let Some(session) = self.selected_session().cloned() else {
+        let Some(session) = self.composer_session().cloned() else {
             return;
         };
         if !session.is_busy() {
