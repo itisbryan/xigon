@@ -166,14 +166,17 @@ impl Waku {
             self.capture_and_save_current_composer_draft(cx);
             self.store_selected_right_panel_state();
         }
+        let previous = self.state.selected_session;
         self.state.selected_session = Some(session_id);
         if !self.chat_tabs.contains(&session_id) {
             self.chat_tabs.push(session_id);
         }
-        // A session can't occupy both the main pane and the split; selecting the
-        // split's session collapses the split so it never shows on both sides.
+        // A session can't occupy both the main pane and the split. Selecting the
+        // split's session swaps the panes (the old main drops into the split)
+        // rather than duplicating it or unsplitting.
         if self.split_session == Some(session_id) {
-            self.split_session = None;
+            self.split_session = previous;
+            self.split_markdown.borrow_mut().clear();
         }
         if let Some((project_id, provider, model, reasoning_effort, service_tier, context_window)) =
             self.selected_session().map(|session| {

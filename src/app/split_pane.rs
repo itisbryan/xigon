@@ -35,17 +35,9 @@ impl Waku {
         let Some(split) = self.split_session else {
             return;
         };
-        let previous = self.state.selected_session;
-        if previous == Some(split) {
-            return;
-        }
-        // Move the old main session into the split BEFORE selecting, so
-        // activate_session's "selecting the split collapses it" guard sees a
-        // non-matching split and leaves it alone (otherwise this unsplits).
-        self.split_session = previous;
-        self.split_markdown.borrow_mut().clear();
+        // activate_session swaps the panes when the split's session becomes
+        // selected, so selecting it is the whole promote.
         self.select_session(split, cx);
-        cx.notify();
     }
 
     /// The secondary pane, or `None` when nothing is split.
