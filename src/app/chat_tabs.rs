@@ -43,10 +43,8 @@ impl Waku {
         }
         let theme = Theme::current(cx);
         let hover_bg = theme.accent.opacity(0.16);
-        let selected = self.focused_session_id();
         let main_id = self.state.selected_session;
         let split_id = self.split_session;
-        let has_split = split_id.is_some();
         let is_on = |id: Uuid| main_id == Some(id) || split_id == Some(id);
         let mut strip = div()
             .id("chat-tabs")
@@ -69,7 +67,6 @@ impl Waku {
             };
             // Both panes' tabs read as on-screen when split; the focused one
             // is strongest.
-            let focused = selected == Some(session_id);
             let on_screen = is_on(session_id);
             // Join adjacent on-screen tabs (the split pair) into one pill.
             let next_on = self.chat_tabs.get(index + 1).copied().is_some_and(&is_on);
@@ -118,13 +115,7 @@ impl Waku {
                             .line_clamp(1)
                             .text_ellipsis()
                             .text_size(px(12.0))
-                            .text_color(if focused && has_split {
-                                theme.accent
-                            } else if on_screen {
-                                theme.text
-                            } else {
-                                theme.text_secondary
-                            })
+                            .text_color(if on_screen { theme.text } else { theme.text_secondary })
                             .child(label),
                     )
                     .child(
