@@ -1275,7 +1275,6 @@ pub struct Waku {
     right_panel_tabs_scroll_handle: ScrollHandle,
     chat_tabs: Vec<Uuid>,
     chat_tabs_scroll_handle: ScrollHandle,
-    detached_views: Vec<WeakEntity<detached_window::DetachedSessionView>>,
     right_panel_files_scroll_handle: ScrollHandle,
     right_panel_files_scrollbar: Rc<ScrollbarState>,
     right_panel_diff_filter: Entity<ComposerInput>,
@@ -1490,7 +1489,6 @@ mod branches;
 mod chat_tabs;
 mod command_palette;
 mod commit_dialog;
-mod detached_window;
 mod components;
 mod composer;
 mod drafts;
@@ -2710,7 +2708,6 @@ impl Waku {
                 right_panel_tabs_scroll_handle: ScrollHandle::new(),
                 chat_tabs,
                 chat_tabs_scroll_handle: ScrollHandle::new(),
-                detached_views: Vec::new(),
                 right_panel_files_scroll_handle: ScrollHandle::new(),
                 right_panel_files_scrollbar: ScrollbarState::new(),
                 right_panel_diff_filter,

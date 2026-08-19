@@ -95,7 +95,6 @@ impl Waku {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let chat_viewport_width = self.chat_viewport_width(window);
-        let tear_off_tint = Theme::current(cx).accent.opacity(0.06);
         // The transcript's own element sizes itself with `flex_1`, which only
         // stretches inside a flex parent. A cached pane lays its content out
         // as a root, so give it that parent here or its height collapses to
@@ -106,26 +105,7 @@ impl Waku {
             .flex_col()
             .min_h_0()
             .children(self.render_chat_tab_strip(cx))
-            .child(
-                // Dropping a chat tab here (below the strip) tears it into its
-                // own window; dropping on another tab reorders instead.
-                div()
-                    .id("transcript-tear-off")
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
-                        style.bg(tear_off_tint)
-                    })
-                    .on_drop(cx.listener(
-                        |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
-                            this.tear_off_chat_tab(drag.session_id, cx);
-                        },
-                    ))
-                    .child(self.render_transcript(window, chat_viewport_width, cx)),
-            )
+            .child(self.render_transcript(window, chat_viewport_width, cx))
             .into_any_element()
     }
 

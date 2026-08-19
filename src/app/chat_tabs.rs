@@ -1,9 +1,8 @@
 use super::*;
 
-/// A chat tab being dragged to reorder within the strip or torn off to a
-/// new window.
-pub(super) struct ChatTabDrag {
-    pub(super) session_id: Uuid,
+/// A chat tab being dragged to reorder within the strip.
+struct ChatTabDrag {
+    session_id: Uuid,
 }
 
 /// Floating preview rendered under the cursor while a chat tab is dragged.
@@ -65,7 +64,8 @@ impl Waku {
             let label = SharedString::from(super::sidebar::localized_session_title(session));
             let glyph = provider_icon(session.provider);
             let drag_label = label.clone();
-            let tab = div()
+            strip = strip.child(
+                div()
                     .id(SharedString::from(format!("chat-tab-{index}")))
                     .h(px(28.0))
                     .min_w(px(110.0))
@@ -115,96 +115,25 @@ impl Waku {
                             glyph,
                         })
                     })
-                    // Cross-window drag needs an OS-drag handoff, but GPUI's
-                    // macOS perform_drag_operation panics across the ObjC
-                    // boundary on the synthetic payload (SIGABRT mid-drag), so
-                    // the drag stays in-window. Cross-window move will come via a
-                    // floating proxy window (no OS drag), not external_drag_payload.
                     .drag_over::<ChatTabDrag>(move |style, _, _, _| style.bg(hover_bg))
                     .on_drop(cx.listener(move |this, drag: &ChatTabDrag, _, cx| {
                         this.reorder_chat_tab(drag.session_id, index, cx);
-                    }));
-            let menu =
-                self.menu_handle(SharedString::from(format!("chat-tab-menu-{session_id}")), cx);
-            let items = {
-                let waku = cx.entity();
-                move |cx: &mut App| {
-                    let mut items = vec![MenuItem::new(tr!("tabs.move_to_new_window"), {
-                        let waku = waku.clone();
-                        move |_, cx| {
-                            let _ = waku
-                                .update(cx, |waku, cx| waku.tear_off_chat_tab(session_id, cx));
-                        }
-                    })];
-                    let weaks: Vec<_> = waku
-                        .read(cx)
-                        .detached_views
-                        .iter()
-                        .filter(|view| view.upgrade().is_some())
-                        .cloned()
-                        .collect();
-                    let mut targets = Vec::new();
-                    for weak in weaks {
-                        let Some(view) = weak.upgrade() else { continue };
-                        let active = view.read(cx).active();
-                        if let Some(title) = waku
-                            .read(cx)
-                            .state
-                            .sessions
-                            .iter()
-                            .find(|session| session.id == active)
-                            .map(super::sidebar::localized_session_title)
-                        {
-                            targets.push((weak, title));
-                        }
-                    }
-                    if !targets.is_empty() {
-                        items.push(MenuItem::Header(SharedString::from(tr!(
-                            "tabs.move_to_window"
-                        ))));
-                        for (weak, title) in targets {
-                            items.push(MenuItem::new(title, move |_, cx| {
-                                if let Some(view) = weak.upgrade() {
-                                    let _ = view.update(cx, |view, cx| {
-                                        view.accept_session(session_id, cx)
-                                    });
-                                }
-                            }));
-                        }
-                    }
-                    items
-                }
-            };
-            strip = strip.child(context_menu(
-                tab,
-                SharedString::from(format!("chat-tab-ctx-{session_id}")),
-                &menu,
-                items,
-            ));
+                    })),
+            );
         }
         Some(strip.into_any_element())
     }
 
     fn reorder_chat_tab(&mut self, session_id: Uuid, to_index: usize, cx: &mut Context<Self>) {
-        if !self.state.sessions.iter().any(|session| session.id == session_id) {
+        let Some(from) = self.chat_tabs.iter().position(|id| *id == session_id) else {
+            return;
+        };
+        if from == to_index {
             return;
         }
-        match self.chat_tabs.iter().position(|id| *id == session_id) {
-            Some(from) => {
-                if from == to_index {
-                    return;
-                }
-                let id = self.chat_tabs.remove(from);
-                let to = to_index.min(self.chat_tabs.len());
-                self.chat_tabs.insert(to, id);
-            }
-            None => {
-                // A tab dragged in from a detached window joins the main strip;
-                // that window's reconcile drops it on its next render.
-                let to = to_index.min(self.chat_tabs.len());
-                self.chat_tabs.insert(to, session_id);
-            }
-        }
+        let id = self.chat_tabs.remove(from);
+        let to = to_index.min(self.chat_tabs.len());
+        self.chat_tabs.insert(to, id);
         cx.notify();
     }
 
@@ -237,20 +166,15 @@ impl Waku {
 mod tests {
     // Reorder is index arithmetic with a shift when dragging left→right; guard it.
     fn reorder(tabs: &mut Vec<u8>, val: u8, to_index: usize) {
-        match tabs.iter().position(|v| *v == val) {
-            Some(from) => {
-                if from == to_index {
-                    return;
-                }
-                let v = tabs.remove(from);
-                let to = to_index.min(tabs.len());
-                tabs.insert(to, v);
-            }
-            None => {
-                let to = to_index.min(tabs.len());
-                tabs.insert(to, val);
-            }
+        let Some(from) = tabs.iter().position(|v| *v == val) else {
+            return;
+        };
+        if from == to_index {
+            return;
         }
+        let v = tabs.remove(from);
+        let to = to_index.min(tabs.len());
+        tabs.insert(to, v);
     }
 
     #[test]
@@ -266,9 +190,5 @@ mod tests {
         let mut tabs = vec![1u8, 2, 3];
         reorder(&mut tabs, 2, 1); // no-op onto own slot
         assert_eq!(tabs, vec![1, 2, 3]);
-
-        let mut tabs = vec![1u8, 2, 3];
-        reorder(&mut tabs, 9, 1); // foreign tab (from a detached window) joins
-        assert_eq!(tabs, vec![1, 9, 2, 3]);
     }
 }

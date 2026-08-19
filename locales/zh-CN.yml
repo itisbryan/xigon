@@ -836,8 +836,6 @@ common.copy_named: 复制%{name}
 transcript.worked: 已完成
 transcript.worked_for: 用时 %{duration}
 transcript.you_stopped_after: 你在工作 %{duration} 后停止了
-tabs.move_to_new_window: 移动到新窗口
-tabs.move_to_window: 移动到窗口
 transcript.working_for: 工作中 · %{duration}
 transcript.compacting: 正在压缩对话 · %{duration}
 transcript.thinking: 正在思考

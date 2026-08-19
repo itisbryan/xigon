@@ -1723,10 +1723,6 @@ transcript.worked_for:
   en: Worked for %{duration}
 transcript.you_stopped_after:
   en: You stopped after %{duration}
-tabs.move_to_new_window:
-  en: Move to new window
-tabs.move_to_window:
-  en: Move to window
 transcript.working_for:
   en: Working for %{duration}
 transcript.compacting:
