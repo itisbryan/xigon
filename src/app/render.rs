@@ -108,6 +108,9 @@ impl Waku {
         let split_handle = split
             .is_some()
             .then(|| self.render_panel_resize_handle("split-resize", PanelResizeTarget::Split, cx));
+        // Flexbox only distributes a fraction of free space when the grow sum is
+        // < 1, so the sole (unsplit) column must grow by 1 to fill the width.
+        let left_grow = if split.is_some() { ratio } else { 1.0 };
         // The transcript's own element sizes itself with `flex_1`, which only
         // stretches inside a flex parent. A cached pane lays its content out
         // as a root, so give it that parent here or its height collapses to
@@ -131,7 +134,7 @@ impl Waku {
                             .id("transcript-split-drop")
                             .flex()
                             .flex_col()
-                            .flex_grow(ratio)
+                            .flex_grow(left_grow)
                             .flex_basis(px(0.0))
                             .min_h_0()
                             .min_w_0()
