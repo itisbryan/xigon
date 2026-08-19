@@ -96,6 +96,7 @@ impl Waku {
             let join_right = on_screen && prev_on;
             let label = SharedString::from(super::sidebar::localized_session_title(session));
             let glyph = provider_icon(session.provider);
+            let status = session.status;
             let drag_label = label.clone();
             let menu = self.menu_handle(format!("chat-tab-menu-{session_id}"), cx);
             let tab = div()
@@ -145,6 +146,22 @@ impl Waku {
                             .text_color(if on_screen { theme.text } else { theme.text_secondary })
                             .child(label),
                     )
+                    // Status pip: filled accent while busy, hollow danger ring on
+                    // failure — shape differs so it never relies on color alone.
+                    .when(status.is_busy(), |el| {
+                        el.child(div().flex_none().w(px(6.0)).h(px(6.0)).rounded_full().bg(theme.accent))
+                    })
+                    .when(status == SessionStatus::Failed, |el| {
+                        el.child(
+                            div()
+                                .flex_none()
+                                .w(px(6.0))
+                                .h(px(6.0))
+                                .rounded_full()
+                                .border_1()
+                                .border_color(theme.danger),
+                        )
+                    })
                     .child(
                         div()
                             .id(SharedString::from(format!("close-chat-tab-{index}")))
@@ -211,6 +228,25 @@ impl Waku {
                 },
             ));
         }
+        strip = strip.child(
+            div()
+                .id("chat-tab-new")
+                .h(px(28.0))
+                .w(px(28.0))
+                .ml(px(4.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.0))
+                .cursor_default()
+                .hover(|el| el.bg(theme.overlay))
+                .tooltip(Tooltip::text(tr_cow!("menu.new_task")))
+                .child(icon("icons/plus.svg", 13.0, theme.text_secondary))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.new_session_action(&NewSession, window, cx);
+                })),
+        );
         Some(strip.into_any_element())
     }
 
