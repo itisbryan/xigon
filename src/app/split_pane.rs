@@ -22,6 +22,25 @@ impl Waku {
         cx.notify();
     }
 
+    /// Make the split session the active one (so the composer targets it) and
+    /// push the previously active session into the split pane. Reuses
+    /// `select_session`, so the composer/footer/draft all follow correctly with
+    /// no retargeting. ponytail: this swaps the two panes' sessions rather than
+    /// focusing in place; add in-place focus if keeping positions matters.
+    pub(super) fn promote_split(&mut self, cx: &mut Context<Self>) {
+        let Some(split) = self.split_session else {
+            return;
+        };
+        let previous = self.state.selected_session;
+        if previous == Some(split) {
+            return;
+        }
+        self.select_session(split, cx);
+        self.split_session = previous;
+        self.split_markdown.borrow_mut().clear();
+        cx.notify();
+    }
+
     /// The secondary pane, or `None` when nothing is split.
     pub(super) fn render_split_pane(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let session_id = self.split_session?;
@@ -57,6 +76,12 @@ impl Waku {
                 .size_full()
                 .child(
                     div()
+                        // Click the header to make this pane the active session
+                        // (its transcript + composer move to the main pane).
+                        .id("split-header")
+                        .cursor_default()
+                        .hover(|el| el.bg(theme.overlay))
+                        .on_click(cx.listener(|this, _, _, cx| this.promote_split(cx)))
                         .flex_none()
                         .flex()
                         .items_center()
@@ -89,7 +114,10 @@ impl Waku {
                                 .cursor_default()
                                 .hover(|el| el.bg(theme.overlay))
                                 .child(icon("icons/x.svg", 11.0, theme.text_tertiary))
-                                .on_click(cx.listener(|this, _, _, cx| this.close_split(cx))),
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.close_split(cx);
+                                })),
                         ),
                 )
                 .child(
