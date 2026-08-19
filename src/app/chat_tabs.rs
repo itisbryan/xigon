@@ -144,6 +144,9 @@ impl Waku {
             return;
         };
         self.chat_tabs.remove(index);
+        if self.split_session == Some(session_id) {
+            self.split_session = None;
+        }
         if self.state.selected_session != Some(session_id) {
             cx.notify();
             return;
