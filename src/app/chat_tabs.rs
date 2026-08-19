@@ -79,6 +79,7 @@ impl Waku {
             .border_color(theme.border)
             .overflow_x_scroll()
             .track_scroll(&self.chat_tabs_scroll_handle);
+        let weak = cx.entity().downgrade();
         for (index, session_id) in order.iter().copied().enumerate() {
             let Some(session) = self.state.sessions.iter().find(|s| s.id == session_id) else {
                 continue;
@@ -96,8 +97,8 @@ impl Waku {
             let label = SharedString::from(super::sidebar::localized_session_title(session));
             let glyph = provider_icon(session.provider);
             let drag_label = label.clone();
-            strip = strip.child(
-                div()
+            let menu = self.menu_handle(format!("chat-tab-menu-{session_id}"), cx);
+            let tab = div()
                     .id(SharedString::from(format!("chat-tab-{index}")))
                     .h(px(28.0))
                     .min_w(px(110.0))
@@ -174,8 +175,41 @@ impl Waku {
                     .drag_over::<ChatTabDrag>(move |style, _, _, _| style.bg(hover_bg))
                     .on_drop(cx.listener(move |this, drag: &ChatTabDrag, _, cx| {
                         this.reorder_chat_tab(drag.session_id, session_id, cx);
-                    })),
-            );
+                    }));
+            let is_split = split_id == Some(session_id);
+            let menu_weak = weak.clone();
+            strip = strip.child(context_menu(
+                tab,
+                SharedString::from(format!("chat-tab-menuwrap-{index}")),
+                &menu,
+                move |_| {
+                    let w = menu_weak.clone();
+                    let mut items = vec![
+                        MenuItem::new(tr!("tabs.split_left"), {
+                            let w = w.clone();
+                            move |_, cx| {
+                                let _ =
+                                    w.update(cx, |waku, cx| waku.open_split(session_id, true, cx));
+                            }
+                        }),
+                        MenuItem::new(tr!("tabs.split_right"), {
+                            let w = w.clone();
+                            move |_, cx| {
+                                let _ =
+                                    w.update(cx, |waku, cx| waku.open_split(session_id, false, cx));
+                            }
+                        }),
+                    ];
+                    if is_split {
+                        items.push(MenuItem::Separator);
+                        let w = w.clone();
+                        items.push(MenuItem::new(tr!("tabs.close_split"), move |_, cx| {
+                            let _ = w.update(cx, |waku, cx| waku.close_split(cx));
+                        }));
+                    }
+                    items
+                },
+            ));
         }
         Some(strip.into_any_element())
     }

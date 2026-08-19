@@ -1,5 +1,11 @@
 _version: 2
 
+tabs.split_left:
+  en: Split Left
+tabs.split_right:
+  en: Split Right
+tabs.close_split:
+  en: Close Split
 menu.about:
   en: About %{app}
 menu.check_for_updates:
