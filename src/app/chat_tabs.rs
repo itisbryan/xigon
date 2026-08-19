@@ -65,8 +65,7 @@ impl Waku {
             let label = SharedString::from(super::sidebar::localized_session_title(session));
             let glyph = provider_icon(session.provider);
             let drag_label = label.clone();
-            strip = strip.child(
-                div()
+            let tab = div()
                     .id(SharedString::from(format!("chat-tab-{index}")))
                     .h(px(28.0))
                     .min_w(px(110.0))
@@ -124,8 +123,64 @@ impl Waku {
                     .drag_over::<ChatTabDrag>(move |style, _, _, _| style.bg(hover_bg))
                     .on_drop(cx.listener(move |this, drag: &ChatTabDrag, _, cx| {
                         this.reorder_chat_tab(drag.session_id, index, cx);
-                    })),
-            );
+                    }));
+            let menu =
+                self.menu_handle(SharedString::from(format!("chat-tab-menu-{session_id}")), cx);
+            let items = {
+                let waku = cx.entity();
+                move |cx: &mut App| {
+                    let mut items = vec![MenuItem::new(tr!("tabs.move_to_new_window"), {
+                        let waku = waku.clone();
+                        move |_, cx| {
+                            let _ = waku
+                                .update(cx, |waku, cx| waku.tear_off_chat_tab(session_id, cx));
+                        }
+                    })];
+                    let weaks: Vec<_> = waku
+                        .read(cx)
+                        .detached_views
+                        .iter()
+                        .filter(|view| view.upgrade().is_some())
+                        .cloned()
+                        .collect();
+                    let mut targets = Vec::new();
+                    for weak in weaks {
+                        let Some(view) = weak.upgrade() else { continue };
+                        let active = view.read(cx).active();
+                        if let Some(title) = waku
+                            .read(cx)
+                            .state
+                            .sessions
+                            .iter()
+                            .find(|session| session.id == active)
+                            .map(super::sidebar::localized_session_title)
+                        {
+                            targets.push((weak, title));
+                        }
+                    }
+                    if !targets.is_empty() {
+                        items.push(MenuItem::Header(SharedString::from(tr!(
+                            "tabs.move_to_window"
+                        ))));
+                        for (weak, title) in targets {
+                            items.push(MenuItem::new(title, move |_, cx| {
+                                if let Some(view) = weak.upgrade() {
+                                    let _ = view.update(cx, |view, cx| {
+                                        view.accept_session(session_id, cx)
+                                    });
+                                }
+                            }));
+                        }
+                    }
+                    items
+                }
+            };
+            strip = strip.child(context_menu(
+                tab,
+                SharedString::from(format!("chat-tab-ctx-{session_id}")),
+                &menu,
+                items,
+            ));
         }
         Some(strip.into_any_element())
     }

@@ -885,6 +885,8 @@ common.copy_named: "%{name} をコピー"
 transcript.worked: 完了
 transcript.worked_for: 作業時間 %{duration}
 transcript.you_stopped_after: "%{duration} 後にタスクを停止しました"
+tabs.move_to_new_window: 新しいウィンドウへ移動
+tabs.move_to_window: ウィンドウへ移動
 transcript.working_for: 作業中 · %{duration}
 transcript.compacting: 会話を圧縮中 · %{duration}
 transcript.thinking: 思考中

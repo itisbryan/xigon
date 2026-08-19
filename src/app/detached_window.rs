@@ -170,6 +170,23 @@ impl DetachedSessionView {
             .into_any_element()
     }
 
+    /// Session id of the currently shown tab (for a target window's label).
+    pub(super) fn active(&self) -> Uuid {
+        self.active
+    }
+
+    /// Take a session into this window's pane and drop it from the main strip.
+    pub(super) fn accept_session(&mut self, incoming: Uuid, cx: &mut Context<Self>) {
+        if !self.tabs.contains(&incoming) {
+            self.tabs.push(incoming);
+        }
+        self.active = incoming;
+        cx.notify();
+        if let Some(waku) = self.waku.upgrade() {
+            waku.update(cx, |waku, cx| waku.close_chat_tab(incoming, cx));
+        }
+    }
+
     /// Return a tab to the main strip and drop it from this window.
     fn close_detached_tab(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
         self.tabs.retain(|id| *id != session_id);
@@ -263,15 +280,7 @@ impl Render for DetachedSessionView {
             .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| style.bg(drop_tint))
             .on_drop(cx.listener(
                 |this, drag: &super::chat_tabs::ChatTabDrag, _window, cx| {
-                    let incoming = drag.session_id;
-                    if !this.tabs.contains(&incoming) {
-                        this.tabs.push(incoming);
-                    }
-                    this.active = incoming;
-                    cx.notify();
-                    if let Some(waku) = this.waku.upgrade() {
-                        waku.update(cx, |waku, cx| waku.close_chat_tab(incoming, cx));
-                    }
+                    this.accept_session(drag.session_id, cx);
                 },
             ))
             .child(
@@ -346,7 +355,11 @@ impl Waku {
             },
             move |_window, cx| cx.new(|cx| DetachedSessionView::new(&waku, session_id, cx)),
         );
-        if opened.is_ok() {
+        if let Ok(handle) = opened {
+            if let Ok(view) = handle.entity(cx) {
+                self.detached_views.retain(|v| v.upgrade().is_some());
+                self.detached_views.push(view.downgrade());
+            }
             self.close_chat_tab(session_id, cx);
         }
     }
