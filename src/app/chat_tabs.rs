@@ -108,6 +108,11 @@ impl Waku {
                             })),
                     )
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        // Already shown in the split pane? Do nothing — don't swap
+                        // the panes' positions or duplicate the session.
+                        if this.split_session == Some(session_id) {
+                            return;
+                        }
                         this.select_session(session_id, cx);
                     }))
                     .on_drag(ChatTabDrag { session_id }, move |_, _, _, cx| {
