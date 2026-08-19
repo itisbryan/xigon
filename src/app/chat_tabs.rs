@@ -46,6 +46,7 @@ impl Waku {
         let selected = self.focused_session_id();
         let main_id = self.state.selected_session;
         let split_id = self.split_session;
+        let has_split = split_id.is_some();
         let is_on = |id: Uuid| main_id == Some(id) || split_id == Some(id);
         let mut strip = div()
             .id("chat-tabs")
@@ -105,8 +106,9 @@ impl Waku {
                     .items_center()
                     .gap(px(6.0))
                     .cursor_default()
-                    .when(focused, |el| el.bg(theme.overlay_strong))
-                    .when(on_screen && !focused, |el| el.bg(theme.overlay))
+                    // Both split halves share one fill so the pill reads as a
+                    // single unit; focus is shown by the accent label below.
+                    .when(on_screen, |el| el.bg(theme.overlay_strong))
                     .when(!on_screen, |el| el.hover(|el| el.bg(theme.overlay)))
                     .child(icon(glyph, 13.0, theme.text_secondary))
                     .child(
@@ -116,7 +118,13 @@ impl Waku {
                             .line_clamp(1)
                             .text_ellipsis()
                             .text_size(px(12.0))
-                            .text_color(if on_screen { theme.text } else { theme.text_secondary })
+                            .text_color(if focused && has_split {
+                                theme.accent
+                            } else if on_screen {
+                                theme.text
+                            } else {
+                                theme.text_secondary
+                            })
                             .child(label),
                     )
                     .child(
