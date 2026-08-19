@@ -170,6 +170,11 @@ impl Waku {
         if !self.chat_tabs.contains(&session_id) {
             self.chat_tabs.push(session_id);
         }
+        // A session can't occupy both the main pane and the split; selecting the
+        // split's session collapses the split so it never shows on both sides.
+        if self.split_session == Some(session_id) {
+            self.split_session = None;
+        }
         if let Some((project_id, provider, model, reasoning_effort, service_tier, context_window)) =
             self.selected_session().map(|session| {
                 (

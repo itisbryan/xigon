@@ -151,8 +151,28 @@ impl Waku {
             .size_full()
             .min_w_0()
             .child(transcript)
-            .child(drop_half(false))
-            .child(drop_half(true))
+            // Unsplit: left/right halves create a split on that side. Already
+            // split: one full-pane target that replaces this pane's session, so
+            // the frame is the whole pane, not a confusing quarter.
+            .when(!has_split, |d| d.child(drop_half(false)).child(drop_half(true)))
+            .when(has_split, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .size_full()
+                        .border_2()
+                        .border_color(gpui::transparent_black())
+                        .rounded(px(4.0))
+                        .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
+                            style.border_color(split_accent).bg(split_wash)
+                        })
+                        .on_drop(cx.listener(
+                            |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
+                                this.select_session(drag.session_id, cx);
+                            },
+                        )),
+                )
+            })
             .into_any_element();
 
         let column = |content: AnyElement, grow: f32, handle: Option<Stateful<Div>>| {
