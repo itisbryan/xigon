@@ -26,37 +26,17 @@ impl Waku {
         cx.notify();
     }
 
-    /// Make the split session the active one (so the composer targets it) and
-    /// push the previously active session into the split pane. Reuses
-    /// `select_session`, so the composer/footer/draft all follow correctly with
-    /// no retargeting. ponytail: this swaps the two panes' sessions rather than
-    /// focusing in place; add in-place focus if keeping positions matters.
-    pub(super) fn promote_split(&mut self, cx: &mut Context<Self>) {
-        let Some(split) = self.split_session else {
-            return;
-        };
-        // activate_session swaps the panes when the split's session becomes
-        // selected, so selecting it is the whole promote.
-        self.select_session(split, cx);
-    }
-
     /// The secondary pane, or `None` when nothing is split.
     pub(super) fn render_split_pane(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let session_id = self.split_session?;
         let theme = Theme::current(cx);
-        let info = self
+        let Some(count) = self
             .state
             .sessions
             .iter()
             .find(|session| session.id == session_id)
-            .map(|session| {
-                (
-                    SharedString::from(super::sidebar::localized_session_title(session)),
-                    provider_icon(session.provider),
-                    session.messages.len(),
-                )
-            });
-        let Some((title, glyph, count)) = info else {
+            .map(|session| session.messages.len())
+        else {
             // Session gone; collapse the split on the next frame.
             self.split_session = None;
             return None;
@@ -70,55 +50,10 @@ impl Waku {
         let entity = cx.entity().downgrade();
         Some(
             div()
+                .relative()
                 .flex()
                 .flex_col()
                 .size_full()
-                .child(
-                    div()
-                        // Click the header to make this pane the active session
-                        // (its transcript + composer move to the main pane).
-                        .id("split-header")
-                        .cursor_default()
-                        .hover(|el| el.bg(theme.overlay))
-                        .on_click(cx.listener(|this, _, _, cx| this.promote_split(cx)))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .h(px(38.0))
-                        .px(px(12.0))
-                        .border_b_1()
-                        .border_color(theme.border)
-                        .child(icon(glyph, 15.0, theme.text_secondary))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .flex_1()
-                                .line_clamp(1)
-                                .text_ellipsis()
-                                .text_size(px(13.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(theme.text)
-                                .child(title),
-                        )
-                        .child(
-                            div()
-                                .id("split-close")
-                                .w(px(20.0))
-                                .h(px(20.0))
-                                .rounded(px(5.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .cursor_default()
-                                .hover(|el| el.bg(theme.overlay))
-                                .child(icon("icons/x.svg", 11.0, theme.text_tertiary))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.close_split(cx);
-                                })),
-                        ),
-                )
                 .child(
                     div()
                         .flex_1()
@@ -141,6 +76,26 @@ impl Waku {
                             })
                             .size_full(),
                         ),
+                )
+                .child(
+                    // The strip already labels the sessions, so the split needs
+                    // no header bar — just a small close affordance.
+                    div()
+                        .id("split-close")
+                        .absolute()
+                        .top(px(6.0))
+                        .right(px(10.0))
+                        .w(px(22.0))
+                        .h(px(22.0))
+                        .rounded(px(6.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_default()
+                        .bg(theme.overlay)
+                        .hover(|el| el.bg(theme.overlay_strong))
+                        .child(icon("icons/x.svg", 11.0, theme.text_tertiary))
+                        .on_click(cx.listener(|this, _, _, cx| this.close_split(cx))),
                 )
                 .into_any_element(),
         )
