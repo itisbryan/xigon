@@ -100,6 +100,9 @@ impl Waku {
         let split_accent = Theme::current(cx).accent;
         let split_wash = split_accent.opacity(0.10);
         let split_border = Theme::current(cx).border;
+        let close_bg = Theme::current(cx).overlay;
+        let close_bg_hover = Theme::current(cx).overlay_strong;
+        let close_fg = Theme::current(cx).text_tertiary;
         let ratio = self.split_ratio;
         let on_left = self.split_on_left;
         // Compute the panes first so their (mutable/immutable) borrows of self
@@ -171,6 +174,33 @@ impl Waku {
                                 this.select_session(drag.session_id, cx);
                             },
                         )),
+                )
+            })
+            .when(has_split, |d| {
+                // Both panes are closeable: closing the main pane leaves the
+                // split's session as the only pane.
+                d.child(
+                    div()
+                        .id("main-close")
+                        .absolute()
+                        .top(px(6.0))
+                        .right(px(10.0))
+                        .w(px(22.0))
+                        .h(px(22.0))
+                        .rounded(px(6.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_default()
+                        .bg(close_bg)
+                        .hover(|el| el.bg(close_bg_hover))
+                        .child(icon("icons/x.svg", 11.0, close_fg))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(split) = this.split_session {
+                                this.split_session = None;
+                                this.select_session(split, cx);
+                            }
+                        })),
                 )
             })
             .into_any_element();
