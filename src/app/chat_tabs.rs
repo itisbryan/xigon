@@ -61,7 +61,11 @@ impl Waku {
             let Some(session) = self.state.sessions.iter().find(|s| s.id == session_id) else {
                 continue;
             };
-            let active = selected == Some(session_id);
+            // Both panes' tabs read as on-screen when split; the focused one
+            // is strongest.
+            let focused = selected == Some(session_id);
+            let on_screen = self.state.selected_session == Some(session_id)
+                || self.split_session == Some(session_id);
             let label = SharedString::from(super::sidebar::localized_session_title(session));
             let glyph = provider_icon(session.provider);
             let drag_label = label.clone();
@@ -78,8 +82,9 @@ impl Waku {
                     .items_center()
                     .gap(px(6.0))
                     .cursor_default()
-                    .when(active, |el| el.bg(theme.overlay_strong))
-                    .when(!active, |el| el.hover(|el| el.bg(theme.overlay)))
+                    .when(focused, |el| el.bg(theme.overlay_strong))
+                    .when(on_screen && !focused, |el| el.bg(theme.overlay))
+                    .when(!on_screen, |el| el.hover(|el| el.bg(theme.overlay)))
                     .child(icon(glyph, 13.0, theme.text_secondary))
                     .child(
                         div()
@@ -88,7 +93,7 @@ impl Waku {
                             .line_clamp(1)
                             .text_ellipsis()
                             .text_size(px(12.0))
-                            .text_color(if active { theme.text } else { theme.text_secondary })
+                            .text_color(if on_screen { theme.text } else { theme.text_secondary })
                             .child(label),
                     )
                     .child(
