@@ -107,7 +107,6 @@ impl Waku {
         let on_left = self.split_on_left;
         // Compute the panes first so their (mutable/immutable) borrows of self
         // do not overlap while building the tree.
-        let strip = self.render_chat_tab_strip(cx);
         let split_content = self.render_split_pane(cx);
         let has_split = split_content.is_some();
         let split_handle = has_split
@@ -237,7 +236,6 @@ impl Waku {
             .flex()
             .flex_col()
             .min_h_0()
-            .children(strip)
             .child(body)
             .into_any_element()
     }
@@ -365,6 +363,9 @@ impl Render for Waku {
                         element.border_l_1().border_color(theme.sidebar_border)
                     })
                     .child(self.render_header(window, cx))
+                    // Strip lives above both the empty (new-task) and transcript
+                    // states so opening a new tab never hides the tab headers.
+                    .children(self.render_chat_tab_strip(cx))
                     .child(if empty {
                         self.render_empty_state(cx).into_any_element()
                     } else {
