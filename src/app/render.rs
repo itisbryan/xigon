@@ -24,7 +24,9 @@ impl Waku {
         // conventional straddle.
         let (strip_left, strip_width) = match target {
             PanelResizeTarget::RightPanel => (-7.0, 8.0),
-            PanelResizeTarget::Sidebar | PanelResizeTarget::FileTree => (-5.0, 10.0),
+            PanelResizeTarget::Sidebar
+            | PanelResizeTarget::FileTree
+            | PanelResizeTarget::Split => (-5.0, 10.0),
         };
         div()
             .id(id)
@@ -62,7 +64,7 @@ impl Waku {
 
 impl Waku {
     /// Width left for the chat column once the visible panels take theirs.
-    fn chat_viewport_width(&self, window: &Window) -> f32 {
+    pub(super) fn chat_viewport_width(&self, window: &Window) -> f32 {
         let (sidebar_width, right_panel_width) = self.effective_panel_widths(window);
         f32::from(window.viewport_size().width)
             - if self.sidebar_visible {
@@ -96,11 +98,16 @@ impl Waku {
     ) -> AnyElement {
         let chat_viewport_width = self.chat_viewport_width(window);
         let split_tint = Theme::current(cx).accent.opacity(0.06);
+        let split_border = Theme::current(cx).border;
+        let ratio = self.split_ratio;
         // Compute the panes first so their (mutable/immutable) borrows of self
         // do not overlap while building the tree.
         let strip = self.render_chat_tab_strip(cx);
         let split = self.render_split_pane(cx);
         let transcript = self.render_transcript(window, chat_viewport_width, cx);
+        let split_handle = split
+            .is_some()
+            .then(|| self.render_panel_resize_handle("split-resize", PanelResizeTarget::Split, cx));
         // The transcript's own element sizes itself with `flex_1`, which only
         // stretches inside a flex parent. A cached pane lays its content out
         // as a root, so give it that parent here or its height collapses to
@@ -124,7 +131,8 @@ impl Waku {
                             .id("transcript-split-drop")
                             .flex()
                             .flex_col()
-                            .flex_1()
+                            .flex_grow(ratio)
+                            .flex_basis(px(0.0))
                             .min_h_0()
                             .min_w_0()
                             .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
@@ -141,11 +149,14 @@ impl Waku {
                         div()
                             .flex()
                             .flex_col()
-                            .flex_1()
+                            .flex_grow(1.0 - ratio)
+                            .flex_basis(px(0.0))
                             .min_h_0()
                             .min_w_0()
+                            .relative()
                             .border_l_1()
-                            .border_color(Theme::current(cx).border)
+                            .border_color(split_border)
+                            .children(split_handle)
                             .child(pane)
                     })),
             )

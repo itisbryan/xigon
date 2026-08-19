@@ -259,6 +259,7 @@ enum PanelResizeTarget {
     Sidebar,
     RightPanel,
     FileTree,
+    Split,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1276,6 +1277,7 @@ pub struct Waku {
     chat_tabs: Vec<Uuid>,
     chat_tabs_scroll_handle: ScrollHandle,
     split_session: Option<Uuid>,
+    split_ratio: f32,
     split_rows: ListState,
     split_selection: TranscriptSelection,
     split_markdown: RefCell<HashMap<Uuid, MarkdownView>>,
@@ -2714,6 +2716,7 @@ impl Waku {
                 chat_tabs,
                 chat_tabs_scroll_handle: ScrollHandle::new(),
                 split_session: None,
+                split_ratio: 0.5,
                 split_rows: ListState::new(0, ListAlignment::Bottom, px(2048.0)),
                 split_selection: TranscriptSelection::default(),
                 split_markdown: RefCell::new(HashMap::new()),

@@ -592,6 +592,8 @@ impl Waku {
                 self.right_panel_file_tree_width = width;
                 width
             }
+            // Reuse start_width to carry the split's starting ratio (0..1).
+            PanelResizeTarget::Split => self.split_ratio,
         };
         self.panel_resize_drag = Some(PanelResizeDrag {
             target,
@@ -645,6 +647,16 @@ impl Waku {
                     return;
                 }
                 self.right_panel_file_tree_width = width;
+            }
+            PanelResizeTarget::Split => {
+                // start_width holds the starting ratio; convert the pixel delta
+                // to a ratio over the two-column area and clamp each pane's share.
+                let available = self.chat_viewport_width(window).max(1.0);
+                let ratio = (drag.start_width + delta / available).clamp(0.2, 0.8);
+                if (self.split_ratio - ratio).abs() < 0.002 {
+                    return;
+                }
+                self.split_ratio = ratio;
             }
         }
         cx.notify();
