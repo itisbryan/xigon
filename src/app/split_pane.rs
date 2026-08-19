@@ -169,10 +169,17 @@ impl Waku {
             .w_full()
             .px(px(20.0))
             .py(px(6.0))
+            // User messages are right-aligned capped bubbles; assistant text is
+            // full-width plain — matching the main transcript's shape.
+            .when(is_user, |el| el.flex().justify_end())
             .child(
                 div()
                     .when(is_user, |el| {
-                        el.rounded(px(8.0)).bg(theme.raised).px(px(12.0)).py(px(8.0))
+                        el.max_w(gpui::relative(0.8))
+                            .rounded(px(10.0))
+                            .bg(theme.raised)
+                            .px(px(12.0))
+                            .py(px(8.0))
                     })
                     .child(body),
             )
