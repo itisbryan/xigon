@@ -126,7 +126,7 @@ impl Waku {
                             .flex_col()
                             .flex_1()
                             .min_h_0()
-                            .w_full()
+                            .min_w_0()
                             .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
                                 style.bg(split_tint)
                             })
@@ -143,6 +143,7 @@ impl Waku {
                             .flex_col()
                             .flex_1()
                             .min_h_0()
+                            .min_w_0()
                             .border_l_1()
                             .border_color(Theme::current(cx).border)
                             .child(pane)
