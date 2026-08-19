@@ -97,7 +97,8 @@ impl Waku {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let chat_viewport_width = self.chat_viewport_width(window);
-        let split_tint = Theme::current(cx).accent.opacity(0.06);
+        let split_accent = Theme::current(cx).accent;
+        let split_wash = split_accent.opacity(0.10);
         let split_border = Theme::current(cx).border;
         let ratio = self.split_ratio;
         // Compute the panes first so their (mutable/immutable) borrows of self
@@ -138,8 +139,12 @@ impl Waku {
                             .flex_basis(px(0.0))
                             .min_h_0()
                             .min_w_0()
+                            // Reserve the frame so lighting it up on drag causes
+                            // no layout shift.
+                            .border_2()
+                            .border_color(gpui::transparent_black())
                             .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
-                                style.bg(split_tint)
+                                style.border_color(split_accent).bg(split_wash)
                             })
                             .on_drop(cx.listener(
                                 |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
