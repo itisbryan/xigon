@@ -44,6 +44,9 @@ impl Waku {
         let theme = Theme::current(cx);
         let hover_bg = theme.accent.opacity(0.16);
         let selected = self.focused_session_id();
+        let main_id = self.state.selected_session;
+        let split_id = self.split_session;
+        let is_on = |id: Uuid| main_id == Some(id) || split_id == Some(id);
         let mut strip = div()
             .id("chat-tabs")
             .w_full()
@@ -51,7 +54,9 @@ impl Waku {
             .flex_none()
             .flex()
             .items_center()
-            .gap(px(4.0))
+            // Tabs space themselves via left margin so a split pair can sit
+            // flush and read as one joined unit.
+            .gap(px(0.0))
             .px(px(8.0))
             .border_b_1()
             .border_color(theme.border)
@@ -64,8 +69,16 @@ impl Waku {
             // Both panes' tabs read as on-screen when split; the focused one
             // is strongest.
             let focused = selected == Some(session_id);
-            let on_screen = self.state.selected_session == Some(session_id)
-                || self.split_session == Some(session_id);
+            let on_screen = is_on(session_id);
+            // Join adjacent on-screen tabs (the split pair) into one pill.
+            let next_on = self.chat_tabs.get(index + 1).copied().is_some_and(&is_on);
+            let prev_on = index
+                .checked_sub(1)
+                .and_then(|i| self.chat_tabs.get(i))
+                .copied()
+                .is_some_and(&is_on);
+            let join_left = on_screen && next_on;
+            let join_right = on_screen && prev_on;
             let label = SharedString::from(super::sidebar::localized_session_title(session));
             let glyph = provider_icon(session.provider);
             let drag_label = label.clone();
@@ -76,7 +89,17 @@ impl Waku {
                     .min_w(px(110.0))
                     .max_w(px(200.0))
                     .px(px(8.0))
-                    .rounded(px(6.0))
+                    .ml(if index == 0 || join_right { px(0.0) } else { px(4.0) })
+                    .when(!join_left && !join_right, |el| el.rounded(px(6.0)))
+                    .when(join_left && !join_right, |el| {
+                        el.rounded_tl(px(6.0)).rounded_bl(px(6.0))
+                    })
+                    .when(join_right && !join_left, |el| {
+                        el.rounded_tr(px(6.0))
+                            .rounded_br(px(6.0))
+                            .border_l_1()
+                            .border_color(theme.border)
+                    })
                     .flex_none()
                     .flex()
                     .items_center()
