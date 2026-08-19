@@ -101,88 +101,94 @@ impl Waku {
         let split_wash = split_accent.opacity(0.10);
         let split_border = Theme::current(cx).border;
         let ratio = self.split_ratio;
+        let on_left = self.split_on_left;
         // Compute the panes first so their (mutable/immutable) borrows of self
         // do not overlap while building the tree.
         let strip = self.render_chat_tab_strip(cx);
-        let split = self.render_split_pane(cx);
-        let transcript = self.render_transcript(window, chat_viewport_width, cx);
-        let split_handle = split
-            .is_some()
+        let split_content = self.render_split_pane(cx);
+        let has_split = split_content.is_some();
+        let split_handle = has_split
             .then(|| self.render_panel_resize_handle("split-resize", PanelResizeTarget::Split, cx));
-        // Flexbox only distributes a fraction of free space when the grow sum is
-        // < 1, so the sole (unsplit) column must grow by 1 to fill the width.
-        let left_grow = if split.is_some() { ratio } else { 1.0 };
-        // The transcript's own element sizes itself with `flex_1`, which only
-        // stretches inside a flex parent. A cached pane lays its content out
-        // as a root, so give it that parent here or its height collapses to
-        // the zero flex basis.
+        let transcript = self.render_transcript(window, chat_viewport_width, cx);
+        // split_ratio is the first column's fraction; grow sum must reach 1 so
+        // flexbox fills the row (a sole column grows by 1).
+        let (transcript_grow, split_grow) = if !has_split {
+            (1.0, 0.0)
+        } else if on_left {
+            (1.0 - ratio, ratio)
+        } else {
+            (ratio, 1.0 - ratio)
+        };
+
+        // Half-width drop target that frames where the split pane will open.
+        let drop_half = |align_right: bool| {
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .when(align_right, |d| d.right_0())
+                .when(!align_right, |d| d.left_0())
+                .w(gpui::relative(0.5))
+                .border_2()
+                .border_color(gpui::transparent_black())
+                .rounded(px(4.0))
+                .drag_over::<super::chat_tabs::ChatTabDrag>(move |style, _, _, _| {
+                    style.border_color(split_accent).bg(split_wash)
+                })
+                .on_drop(cx.listener(
+                    move |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
+                        // Left half opens the split on the left, right half on
+                        // the right.
+                        this.open_split(drag.session_id, !align_right, cx);
+                    },
+                ))
+        };
+        let transcript_col = div()
+            .id("transcript-split-drop")
+            .relative()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_w_0()
+            .child(transcript)
+            .child(drop_half(false))
+            .child(drop_half(true))
+            .into_any_element();
+
+        let column = |content: AnyElement, grow: f32, handle: Option<Stateful<Div>>| {
+            div()
+                .flex()
+                .flex_col()
+                .flex_grow(grow)
+                .flex_basis(px(0.0))
+                .min_h_0()
+                .min_w_0()
+                .when(handle.is_some(), |d| {
+                    d.relative().border_l_1().border_color(split_border)
+                })
+                .child(content)
+                // Handle paints last so it sits above the pane content.
+                .children(handle)
+        };
+
+        let body = div().flex().flex_1().min_h_0().w_full();
+        let body = match split_content {
+            None => body.child(column(transcript_col, transcript_grow, None)),
+            Some(pane) if on_left => body
+                .child(column(pane, split_grow, None))
+                .child(column(transcript_col, transcript_grow, split_handle)),
+            Some(pane) => body
+                .child(column(transcript_col, transcript_grow, None))
+                .child(column(pane, split_grow, split_handle)),
+        };
+
         div()
             .size_full()
             .flex()
             .flex_col()
             .min_h_0()
             .children(strip)
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .w_full()
-                    .child(
-                        // Dropping a chat tab on the transcript opens it in a
-                        // split pane beside this one (multiplexer-style).
-                        div()
-                            .id("transcript-split-drop")
-                            .relative()
-                            .flex()
-                            .flex_col()
-                            .flex_grow(left_grow)
-                            .flex_basis(px(0.0))
-                            .min_h_0()
-                            .min_w_0()
-                            .child(transcript)
-                            .child(
-                                // Right-half drop target: frames exactly where the
-                                // split pane will open, so the preview shows the
-                                // region, not the whole pane.
-                                div()
-                                    .absolute()
-                                    .top_0()
-                                    .bottom_0()
-                                    .right_0()
-                                    .w(gpui::relative(0.5))
-                                    .border_2()
-                                    .border_color(gpui::transparent_black())
-                                    .rounded(px(4.0))
-                                    .drag_over::<super::chat_tabs::ChatTabDrag>(
-                                        move |style, _, _, _| {
-                                            style.border_color(split_accent).bg(split_wash)
-                                        },
-                                    )
-                                    .on_drop(cx.listener(
-                                        |this, drag: &super::chat_tabs::ChatTabDrag, _, cx| {
-                                            this.open_split(drag.session_id, cx);
-                                        },
-                                    )),
-                            ),
-                    )
-                    .children(split.map(|pane| {
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_grow(1.0 - ratio)
-                            .flex_basis(px(0.0))
-                            .min_h_0()
-                            .min_w_0()
-                            .relative()
-                            .border_l_1()
-                            .border_color(split_border)
-                            .child(pane)
-                            // Handle paints last so it sits above the pane and
-                            // actually receives the mouse-down to start a resize.
-                            .children(split_handle)
-                    })),
-            )
+            .child(body)
             .into_any_element()
     }
 

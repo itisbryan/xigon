@@ -9,10 +9,14 @@ use super::*;
 // message text only. Add: 4-edge splits + a pane tree, focus + compose-to-pane,
 // resizable splitter, tool activity, when a real tiling workflow needs them.
 impl Waku {
-    pub(super) fn open_split(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
+    pub(super) fn open_split(&mut self, session_id: Uuid, on_left: bool, cx: &mut Context<Self>) {
+        let changed = self.split_session != Some(session_id) || self.split_on_left != on_left;
+        self.split_on_left = on_left;
         if self.split_session != Some(session_id) {
             self.split_session = Some(session_id);
             self.split_markdown.borrow_mut().clear();
+        }
+        if changed {
             cx.notify();
         }
     }
